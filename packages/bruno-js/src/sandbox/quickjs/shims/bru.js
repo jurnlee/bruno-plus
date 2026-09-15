@@ -126,6 +126,30 @@ const addBruShimToContext = (vm, bru) => {
   vm.setProp(bruObject, 'deleteAllGlobalEnvVars', deleteAllGlobalEnvVars);
   deleteAllGlobalEnvVars.dispose();
 
+  let getData = vm.newFunction('getData', function (key) {
+    return marshallToVm(bru.getData(vm.dump(key)), vm);
+  });
+  vm.setProp(bruObject, 'getData', getData);
+  getData.dispose();
+
+  let getAllData = vm.newFunction('getAllData', function () {
+    return marshallToVm(bru.getAllData(), vm);
+  });
+  vm.setProp(bruObject, 'getAllData', getAllData);
+  getAllData.dispose();
+
+  let getIteration = vm.newFunction('getIteration', function () {
+    return marshallToVm(bru.getIteration(), vm);
+  });
+  vm.setProp(bruObject, 'getIteration', getIteration);
+  getIteration.dispose();
+
+  let getIterationCount = vm.newFunction('getIterationCount', function () {
+    return marshallToVm(bru.getIterationCount(), vm);
+  });
+  vm.setProp(bruObject, 'getIterationCount', getIterationCount);
+  getIterationCount.dispose();
+
   let hasVar = vm.newFunction('hasVar', function (key) {
     return marshallToVm(bru.hasVar(vm.dump(key)), vm);
   });

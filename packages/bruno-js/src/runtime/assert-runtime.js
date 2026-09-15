@@ -361,6 +361,7 @@ const evaluateRhsOperand = (rhsOperand, operator, context, runtime) => {
     collectionVariables: context.bru.collectionVariables,
     folderVariables: context.bru.folderVariables,
     requestVariables: context.bru.requestVariables,
+    dataVariables: context.bru.dataVariables,
     runtimeVariables: context.bru.runtimeVariables,
     envVariables: context.bru.envVariables,
     processEnvVars: context.bru.processEnvVars
@@ -417,6 +418,8 @@ class AssertRuntime {
     }
 
     const promptVariables = request?.promptVariables || {};
+    const dataVariables = request?.dataVariables;
+    const iterationInfo = request?.iterationInfo;
     const certsAndProxyConfig = request?.certsAndProxyConfig;
     const bru = new Bru({
       runtime: this.runtime,
@@ -428,6 +431,8 @@ class AssertRuntime {
       requestVariables,
       globalEnvironmentVariables,
       promptVariables,
+      dataVariables,
+      iterationInfo,
       certsAndProxyConfig,
       requestUrl: request?.url
     });
@@ -447,6 +452,7 @@ class AssertRuntime {
       ...folderVariables,
       ...requestVariables,
       ...oauth2CredentialVariables,
+      ...(request?.dataVariables || {}),
       ...runtimeVariables,
       ...processEnvVars,
       ...bruContext

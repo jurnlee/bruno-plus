@@ -34,6 +34,8 @@ class ScriptRuntime {
     const folderVariables = request?.folderVariables || {};
     const requestVariables = request?.requestVariables || {};
     const promptVariables = request?.promptVariables || {};
+    const dataVariables = request?.dataVariables;
+    const iterationInfo = request?.iterationInfo;
     const assertionResults = request?.assertionResults || [];
     const certsAndProxyConfig = request?.certsAndProxyConfig;
     const scriptPath = request?.pathname;
@@ -50,6 +52,8 @@ class ScriptRuntime {
       oauth2CredentialVariables,
       collectionName,
       promptVariables,
+      dataVariables,
+      iterationInfo,
       certsAndProxyConfig,
       requestUrl: request?.url
     });
@@ -183,6 +187,8 @@ class ScriptRuntime {
     const folderVariables = request?.folderVariables || {};
     const requestVariables = request?.requestVariables || {};
     const promptVariables = request?.promptVariables || {};
+    const dataVariables = request?.dataVariables;
+    const iterationInfo = request?.iterationInfo;
     const assertionResults = request?.assertionResults || {};
     const certsAndProxyConfig = request?.certsAndProxyConfig;
     const scriptPath = request?.pathname;
@@ -199,6 +205,8 @@ class ScriptRuntime {
       oauth2CredentialVariables,
       collectionName,
       promptVariables,
+      dataVariables,
+      iterationInfo,
       certsAndProxyConfig,
       requestUrl: request?.url
     });
