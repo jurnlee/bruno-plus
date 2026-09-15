@@ -59,6 +59,7 @@ const { preferencesUtil, getPreferences, savePreferences } = require('./store/pr
 const { globalEnvironmentsManager } = require('./store/workspace-environments');
 const registerNotificationsIpc = require('./ipc/notifications');
 const registerGlobalEnvironmentsIpc = require('./ipc/global-environments');
+const { registerDataFileIpc } = require('./ipc/data-file');
 const TerminalManager = require('./ipc/terminal');
 const { safeParseJSON, safeStringifyJSON } = require('./utils/common');
 const { getDomainsWithCookies } = require('./utils/cookies');
@@ -528,6 +529,7 @@ app.on('ready', async () => {
   registerAiAutocompleteIpc(mainWindow);
   registerMountIpc();
   registerSqliteIpc(mainWindow);
+  registerDataFileIpc();
 
   // Internal delegator
   ipcMain.handle('main:cache-clear', async () => {
