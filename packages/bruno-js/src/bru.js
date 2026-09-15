@@ -31,6 +31,8 @@ class Bru {
    * @property {object} [options.oauth2CredentialVariables={}] - OAuth2 credential variables
    * @property {string} [options.collectionName] - Name of the collection
    * @property {object} [options.promptVariables={}] - Prompt variables
+   * @property {object} [options.dataVariables] - Current data row of a data-driven run (readonly)
+   * @property {object} [options.iterationInfo] - Iteration position of a data-driven run ({ index: 0-based, count })
    * @property {object} [options.certsAndProxyConfig] - Configuration for bru.sendRequest (proxy, certs, TLS)
    * @property {string} [options.certsAndProxyConfig.collectionPath] - Path to the collection
    * @property {object} [options.certsAndProxyConfig.options] - TLS and proxy options
@@ -52,6 +54,8 @@ class Bru {
     oauth2CredentialVariables,
     collectionName,
     promptVariables,
+    dataVariables,
+    iterationInfo,
     certsAndProxyConfig,
     requestUrl
   }) {
@@ -64,6 +68,10 @@ class Bru {
     this.requestVariables = requestVariables || {};
     this.globalEnvironmentVariables = globalEnvironmentVariables || {};
     this.oauth2CredentialVariables = oauth2CredentialVariables || {};
+    // left undefined outside data-driven runs so the getData/getIteration
+    // APIs can distinguish "no data" from an empty row
+    this.dataVariables = dataVariables;
+    this.iterationInfo = iterationInfo || null;
     this.collectionPath = collectionPath;
     this.collectionName = collectionName;
     // Set by the host-side __bruSetScope global at the top of each segment's IIFE.
@@ -161,6 +169,7 @@ class Bru {
       ...this.folderVariables,
       ...this.requestVariables,
       ...this.oauth2CredentialVariables,
+      ...this.dataVariables,
       ...this.runtimeVariables,
       ...this.promptVariables,
       process: {
@@ -307,6 +316,22 @@ class Bru {
         delete this.oauth2CredentialVariables[key];
       }
     }
+  }
+
+  getData(key) {
+    return this.dataVariables?.[key];
+  }
+
+  getAllData() {
+    return this.dataVariables ? Object.assign({}, this.dataVariables) : undefined;
+  }
+
+  getIteration() {
+    return this.iterationInfo ? this.iterationInfo.index + 1 : null;
+  }
+
+  getIterationCount() {
+    return this.iterationInfo ? this.iterationInfo.count : null;
   }
 
   hasVar(key) {
