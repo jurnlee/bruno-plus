@@ -1,5 +1,7 @@
 export { mockDataFunctions, timeBasedDynamicVars } from './utils/faker-functions';
 export { default as interpolate, interpolateObject } from './interpolate';
+export { parseDataFile } from './data-file';
+export type { DataFileFormat, DataFileError, ParsedDataFile } from './data-file';
 export { percentageToZoomLevel } from './zoom';
 export { default as isRequestTagsIncluded } from './tags';
 export { transformExampleStatusInCollection } from './example-status';
