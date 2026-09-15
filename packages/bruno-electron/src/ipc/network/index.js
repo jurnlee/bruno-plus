@@ -28,6 +28,7 @@ const { uuid, safeStringifyJSON, safeParseJSON, parseDataFromResponse, parseData
 const { chooseFileToSave, writeFile, getCollectionFormat, hasRequestExtension } = require('../../utils/filesystem');
 const { addCookieToJar, getDomainsWithCookies, getCookieStringForUrl } = require('../../utils/cookies');
 const { createFormData } = require('../../utils/form-data');
+const { readDataFile } = require('../data-file');
 const { findItemInCollectionByPathname, sortFolder, getAllRequestsInFolderRecursively, getEnvVars, getTreePathFromCollectionToItem, mergeVars, sortByNameThenSequence } = require('../../utils/collection');
 const { getOAuth2TokenUsingAuthorizationCode, getOAuth2TokenUsingClientCredentials, getOAuth2TokenUsingPasswordCredentials, getOAuth2TokenUsingImplicitGrant, updateCollectionOauth2Credentials, clearOauth2CredentialsByCredentialsId } = require('../../utils/oauth2');
 const { preferencesUtil } = require('../../store/preferences');
@@ -748,7 +749,7 @@ const registerNetworkIpc = (mainWindow) => {
     return scriptResult;
   };
 
-  const runRequest = async ({ item, collection, envVars, processEnvVars, runtimeVariables, runInBackground = false, callerBru = null, parentExecutionMode = null, parentRunnerEventData = null, parentRequestUid = null }) => {
+  const runRequest = async ({ item, collection, envVars, processEnvVars, runtimeVariables, runInBackground = false, callerBru = null, parentExecutionMode = null, parentRunnerEventData = null, parentRequestUid = null, dataContext = null }) => {
     const collectionUid = collection.uid;
     const collectionPath = collection.pathname;
     const cancelTokenUid = uuid();
@@ -883,6 +884,10 @@ const registerNetworkIpc = (mainWindow) => {
 
     const abortController = new AbortController();
     const request = await prepareRequest(item, collection, abortController);
+    if (dataContext?.dataVariables) {
+      request.dataVariables = dataContext.dataVariables;
+      request.iterationInfo = dataContext.iterationInfo;
+    }
     // Every good boy deserves a response.
     if (request.method && request.method.toUpperCase() === 'WOOF') {
       return easterEggResponse(request);
@@ -1421,7 +1426,7 @@ const registerNetworkIpc = (mainWindow) => {
   ipcMain.handle('fetch-gql-schema', fetchGqlSchemaHandler);
 
   ipcMain.handle(
-    'renderer:run-collection-folder', async (event, folder, collection, environment, runtimeVariables, recursive, delay, tags, selectedRequestUids) => {
+    'renderer:run-collection-folder', async (event, folder, collection, environment, runtimeVariables, recursive, delay, tags, selectedRequestUids, dataFilePath) => {
       const collectionUid = collection.uid;
       const collectionPath = collection.pathname;
       const folderUid = folder ? folder.uid : null;
@@ -1432,11 +1437,31 @@ const registerNetworkIpc = (mainWindow) => {
       scriptingConfig.cacheModules = false;
       const envVars = getEnvVars(environment);
       const processEnvVars = getProcessEnvVars(collectionUid);
+
+      // Parsed before testrun-started so a bad data file rejects the invoke
+      // without emitting any runner events.
+      let dataRows = null;
+      if (dataFilePath) {
+        const parsed = readDataFile(dataFilePath);
+        if (parsed.errors.length) {
+          throw new Error(`Data file has errors: ${parsed.errors.map((e) => `line ${e.line}: ${e.message}`).join('; ')}`);
+        }
+        if (!parsed.rows.length) {
+          throw new Error('Data file contains no data rows');
+        }
+        dataRows = parsed.rows;
+      }
+
       let stopRunnerExecution = false;
       let currentAbortController;
       // Tracks the outer runner item currently executing so a nested bru.runRequest
       // can route its oauth2 timeline entry back to this item.
       let currentRunnerEventData = null;
+      // Data-driven runs reset runtime variables per iteration; snapshot the
+      // pre-run state so each data row starts from the same baseline.
+      const runtimeVariablesSnapshot = cloneDeep(runtimeVariables);
+      let currentDataVariables = null;
+      let currentIterationInfo = null;
 
       const abortController = new AbortController();
       saveCancelToken(cancelTokenUid, abortController);
@@ -1504,7 +1529,8 @@ const registerNetworkIpc = (mainWindow) => {
                 runtimeVariables,
                 runInBackground: true,
                 parentExecutionMode: 'runner',
-                parentRunnerEventData: currentRunnerEventData
+                parentRunnerEventData: currentRunnerEventData,
+                dataContext: { dataVariables: currentDataVariables, iterationInfo: currentIterationInfo }
               });
             } catch (e) {
               err = e;
@@ -1557,7 +1583,8 @@ const registerNetworkIpc = (mainWindow) => {
         isRecursive: recursive,
         collectionUid,
         folderUid,
-        cancelTokenUid
+        cancelTokenUid,
+        ...(dataRows ? { iterationCount: dataRows.length, dataFilePath } : {})
       });
 
       try {
@@ -1604,179 +1631,77 @@ const registerNetworkIpc = (mainWindow) => {
             });
         }
 
-        let currentRequestIndex = 0;
-        let nJumps = 0; // count the number of jumps to avoid infinite loops
-        while (currentRequestIndex < folderRequests.length) {
+        const iterationCount = dataRows ? dataRows.length : 1;
+        for (let iterationIndex = 0; iterationIndex < iterationCount; iterationIndex++) {
+          if (dataRows) {
+            // Reset in place: scripts and variable-update handlers hold references
+            // to this object, so it must be cleared rather than replaced.
+            for (const key of Object.keys(runtimeVariables)) {
+              delete runtimeVariables[key];
+            }
+            Object.assign(runtimeVariables, cloneDeep(runtimeVariablesSnapshot));
+            currentDataVariables = dataRows[iterationIndex];
+            currentIterationInfo = { index: iterationIndex, count: dataRows.length };
+          }
+
+          let currentRequestIndex = 0;
+          let nJumps = 0; // count the number of jumps to avoid infinite loops
+          while (currentRequestIndex < folderRequests.length) {
           // user requested to cancel runner
-          if (abortController.signal.aborted) {
-            let error = new Error('Runner execution cancelled');
-            error.isCancel = true;
-            throw error;
-          }
+            if (abortController.signal.aborted) {
+              let error = new Error('Runner execution cancelled');
+              error.isCancel = true;
+              throw error;
+            }
 
-          stopRunnerExecution = false;
+            stopRunnerExecution = false;
 
-          const item = cloneDeep(folderRequests[currentRequestIndex]);
-          let nextRequestName;
-          const itemUid = item.uid;
-          const eventData = {
-            collectionUid,
-            folderUid,
-            itemUid
-          };
-          currentRunnerEventData = eventData;
-
-          const emitRunnerScriptedRequestEvents = (phase, scriptResult) => {
-            const entries = scriptResult?.scriptedRequestEntries || [];
-            entries.forEach((entry) => {
-              mainWindow.webContents.send('main:run-folder-event', {
-                type: 'scripted-request',
-                ...eventData,
-                phase,
-                source: entry.source,
-                scope: entry.scope || null,
-                timestamp: entry.startedAt,
-                data: { request: entry.request, response: entry.response, error: entry.error }
-              });
-            });
-          };
-
-          let timeStart;
-          let timeEnd;
-
-          const requestUid = uuid();
-
-          mainWindow.webContents.send('main:run-folder-event', {
-            type: 'request-queued',
-            requestUid,
-            ...eventData
-          });
-
-          // Skip gRPC requests
-          if (item.type === 'grpc-request') {
-            mainWindow.webContents.send('main:run-folder-event', {
-              type: 'runner-request-skipped',
-              error: 'gRPC requests are skipped in folder/collection runs',
-              responseReceived: {
-                status: 'skipped',
-                statusText: 'gRPC request skipped',
-                data: null,
-                responseTime: 0,
-                headers: null
-              },
-              ...eventData
-            });
-            currentRequestIndex++;
-            continue;
-          }
-
-          const request = await prepareRequest(item, collection, abortController);
-          request.__bruno__executionMode = 'runner';
-
-          const promptVars = await extractPromptVariablesForRequest({ request, collection, envVars, runtimeVariables, processEnvVars });
-
-          if (promptVars.length > 0) {
-            mainWindow.webContents.send('main:run-folder-event', {
-              type: 'runner-request-skipped',
-              error: 'Request has been skipped due to containing prompt variables',
-              responseReceived: {
-                status: 'skipped',
-                statusText: `Prompt variables detected in request. Runner execution is not supported for requests with prompt variables. \n Promps: ${promptVars.join(', ')}`,
-                data: null,
-                responseTime: 0,
-                headers: null
-              },
-              ...eventData
-            });
-
-            currentRequestIndex++;
-
-            continue;
-          }
-
-          try {
-            // Build certsAndProxyConfig for bru.sendRequest
-            const certsAndProxyConfig = await buildCertsAndProxyConfig({
+            const item = cloneDeep(folderRequests[currentRequestIndex]);
+            let nextRequestName;
+            const itemUid = item.uid;
+            const eventData = {
               collectionUid,
-              collection,
-              collectionPath,
-              envVars,
-              runtimeVariables,
-              processEnvVars,
-              request
-            });
+              folderUid,
+              itemUid,
+              // 1-based in events; undefined for non-data runs keeps the old shape
+              ...(dataRows ? { iteration: iterationIndex + 1 } : {})
+            };
+            currentRunnerEventData = eventData;
 
-            // Add certsAndProxyConfig to request object for bru.sendRequest
-            request.certsAndProxyConfig = certsAndProxyConfig;
-
-            let preRequestScriptResult;
-            let preRequestError = null;
-            try {
-              preRequestScriptResult = await runPreRequest(
-                request,
-                requestUid,
-                envVars,
-                collectionPath,
-                collection,
-                collectionUid,
-                runtimeVariables,
-                processEnvVars,
-                scriptingConfig,
-                runRequestByItemPathname
-              );
-            } catch (error) {
-              console.error('Pre-request script error:', error);
-              preRequestError = error;
-            }
-
-            if (preRequestError?.partialResults) {
-              preRequestScriptResult = preRequestError.partialResults;
-              sendVariableUpdates(preRequestScriptResult, { collectionUid, requestUid, collection });
-            }
-
-            preRequestScriptResult = appendScriptErrorResult('pre-request', preRequestScriptResult, preRequestError);
-            emitRunnerScriptedRequestEvents('pre-request', preRequestScriptResult);
-
-            if (preRequestScriptResult?.results) {
-              mainWindow.webContents.send('main:run-folder-event', {
-                type: 'test-results-pre-request',
-                preRequestTestResults: preRequestScriptResult.results,
-                ...eventData
+            const emitRunnerScriptedRequestEvents = (phase, scriptResult) => {
+              const entries = scriptResult?.scriptedRequestEntries || [];
+              entries.forEach((entry) => {
+                mainWindow.webContents.send('main:run-folder-event', {
+                  type: 'scripted-request',
+                  ...eventData,
+                  phase,
+                  source: entry.source,
+                  scope: entry.scope || null,
+                  timestamp: entry.startedAt,
+                  data: { request: entry.request, response: entry.response, error: entry.error }
+                });
               });
-            }
+            };
 
-            notifyScriptExecution({
-              channel: 'main:run-folder-event',
-              basePayload: eventData,
-              scriptType: 'pre-request',
-              error: preRequestError,
-              itemPathname: item.pathname,
-              collectionPath,
-              scriptMetadata: request.script?.reqMetadata
+            let timeStart;
+            let timeEnd;
+
+            const requestUid = uuid();
+
+            mainWindow.webContents.send('main:run-folder-event', {
+              type: 'request-queued',
+              requestUid,
+              ...eventData
             });
 
-            const domainsWithCookiesPreRequest = await getDomainsWithCookies();
-            mainWindow.webContents.send('main:cookies-update', safeParseJSON(safeStringifyJSON(domainsWithCookiesPreRequest)));
-
-            if (preRequestError) {
-              throw preRequestError;
-            }
-
-            if (preRequestScriptResult?.nextRequestName !== undefined) {
-              nextRequestName = preRequestScriptResult.nextRequestName;
-            }
-
-            if (preRequestScriptResult?.stopExecution) {
-              stopRunnerExecution = true;
-            }
-
-            if (preRequestScriptResult?.skipRequest) {
+            // Skip gRPC requests
+            if (item.type === 'grpc-request') {
               mainWindow.webContents.send('main:run-folder-event', {
                 type: 'runner-request-skipped',
-                error: 'Request has been skipped from pre-request script',
+                error: 'gRPC requests are skipped in folder/collection runs',
                 responseReceived: {
                   status: 'skipped',
-                  statusText: 'request skipped via pre-request script',
+                  statusText: 'gRPC request skipped',
                   data: null,
                   responseTime: 0,
                   headers: null
@@ -1787,373 +1712,499 @@ const registerNetworkIpc = (mainWindow) => {
               continue;
             }
 
-            const { data: requestData, dataBuffer: requestDataBuffer } = parseDataFromRequest(request);
-
-            // Remove false Content-Type header (used to stop axios from auto-setting it); no Content-Type was actually set or sent.
-            const headersSent = { ...request.headers };
-            Object.keys(headersSent).forEach((key) => {
-              if (key.toLowerCase() === 'content-type' && headersSent[key] === false) {
-                delete headersSent[key];
-              }
-            });
-
-            let requestSent = {
-              url: request.url,
-              method: request.method,
-              headers: headersSent,
-              data: requestData,
-              dataBuffer: requestDataBuffer,
-              timestamp: Date.now()
-            };
-
-            // todo:
-            // i have no clue why electron can't send the request object
-            // without safeParseJSON(safeStringifyJSON(request.data))
-            sendRunnerRequestSent({ requestUid, requestSent, eventData });
-
-            currentAbortController = new AbortController();
-            request.signal = currentAbortController.signal;
-            request.responseType = 'stream';
-            const axiosInstance = await configureRequest(
-              collectionUid,
-              collection,
-              request,
-              envVars,
-              runtimeVariables,
-              processEnvVars,
-              collectionPath,
-              collection.globalEnvironmentVariables
-            );
-
-            if (request.oauth2Credentials?.credentials && request.oauth2Credentials?.credentialsId) {
-              mainWindow.webContents.send('main:credentials-update', {
-                credentials: request?.oauth2Credentials?.credentials,
-                url: request?.oauth2Credentials?.url,
-                collectionUid,
-                credentialsId: request?.oauth2Credentials?.credentialsId,
-                ...(request?.oauth2Credentials?.folderUid ? { folderUid: request.oauth2Credentials.folderUid } : { itemUid: item.uid }),
-                debugInfo: request?.oauth2Credentials?.debugInfo,
-                // Reducer updates the cache but skips the timeline push for 'runner'.
-                executionMode: 'runner'
-              });
-
-              // RunnerTimeline reads oauth from the runner item, not collection.timeline.
-              if (request.oauth2Credentials.debugInfo) {
-                mainWindow.webContents.send('main:run-folder-event', {
-                  type: 'oauth2-debug',
-                  ...eventData,
-                  url: request.oauth2Credentials.url,
-                  credentialsId: request.oauth2Credentials.credentialsId,
-                  debugInfo: request.oauth2Credentials.debugInfo
-                });
-              }
-
-              const { credentialsId, credentials } = request.oauth2Credentials;
-              request.oauth2CredentialVariables = request.oauth2CredentialVariables || {};
-              Object.entries(credentials).forEach(([key, value]) => {
-                request.oauth2CredentialVariables[`$oauth2.${credentialsId}.${key}`] = value;
-              });
-
-              collection.oauth2Credentials = updateCollectionOauth2Credentials({
-                itemUid: item.uid,
-                collectionUid,
-                collectionOauth2Credentials: collection.oauth2Credentials,
-                requestOauth2Credentials: request.oauth2Credentials
-              });
+            const request = await prepareRequest(item, collection, abortController);
+            request.__bruno__executionMode = 'runner';
+            if (currentDataVariables) {
+              request.dataVariables = currentDataVariables;
+              request.iterationInfo = currentIterationInfo;
             }
 
-            timeStart = Date.now();
-            let response, responseTime;
-            try {
-              if (delay && !Number.isNaN(delay) && delay > 0) {
-                const delayPromise = new Promise((resolve) => setTimeout(resolve, delay));
+            const promptVars = await extractPromptVariablesForRequest({ request, collection, envVars, runtimeVariables, processEnvVars });
 
-                const cancellationPromise = new Promise((_, reject) => {
-                  abortController.signal.addEventListener('abort', () => {
-                    reject(new Error('Cancelled'));
-                  });
-                });
-
-                await Promise.race([delayPromise, cancellationPromise]);
-              }
-
-              /** @type {import('axios').AxiosResponse} */
-              response = await axiosInstance(refreshExplicitHeaderNames(request));
-              response.data = await promisifyStream(response.data, currentAbortController, false);
-              timeEnd = Date.now();
-
-              const { data, dataBuffer } = parseDataFromResponse(response, request.__brunoDisableParsingResponseJson);
-              response.data = data;
-              response.dataBuffer = dataBuffer;
-              response.responseTime = response.headers.get('request-duration');
-              response.headers.delete('request-duration');
-
-              // save cookies
-              if (preferencesUtil.shouldStoreCookies()) {
-                saveCookies(request.url, response.headers);
-              }
-
-              // send domain cookies to renderer
-              const domainsWithCookies = await getDomainsWithCookies();
-
-              mainWindow.webContents.send('main:cookies-update', safeParseJSON(safeStringifyJSON(domainsWithCookies)));
-
-              sendRunnerResponseReceived({
-                requestUid,
+            if (promptVars.length > 0) {
+              mainWindow.webContents.send('main:run-folder-event', {
+                type: 'runner-request-skipped',
+                error: 'Request has been skipped due to containing prompt variables',
                 responseReceived: {
-                  status: response.status,
-                  statusText: response.statusText,
-                  headers: response.headers,
-                  duration: timeEnd - timeStart,
-                  dataBuffer: dataBuffer.toString('base64'),
-                  size: Buffer.byteLength(dataBuffer),
-                  data: response.data,
-                  responseTime: response.responseTime,
-                  timeline: response.timeline,
-                  url: response.request ? response.request.protocol + '//' + response.request.host + response.request.path : null
+                  status: 'skipped',
+                  statusText: `Prompt variables detected in request. Runner execution is not supported for requests with prompt variables. \n Promps: ${promptVars.join(', ')}`,
+                  data: null,
+                  responseTime: 0,
+                  headers: null
                 },
-                eventData
+                ...eventData
               });
-            } catch (error) {
-              // Skip further processing if request was cancelled
-              if (axios.isCancel(error)) {
-                throw error;
-              }
 
-              if (error?.response) {
-                error.response.data = await promisifyStream(error.response.data, currentAbortController, false);
-                const { data, dataBuffer } = parseDataFromResponse(error.response);
-                error.response.responseTime = error.response.headers.get('request-duration');
-                error.response.headers.delete('request-duration');
-                error.response.data = data;
-                error.response.dataBuffer = dataBuffer;
+              currentRequestIndex++;
 
-                // save cookies (4XX/5XX responses can also set cookies)
-                if (preferencesUtil.shouldStoreCookies()) {
-                  saveCookies(request.url, error.response.headers);
-                }
-
-                timeEnd = Date.now();
-                response = {
-                  status: error.response.status,
-                  statusText: error.response.statusText,
-                  headers: error.response.headers,
-                  duration: timeEnd - timeStart,
-                  dataBuffer: dataBuffer.toString('base64'),
-                  size: Buffer.byteLength(dataBuffer),
-                  data: error.response.data,
-                  responseTime: error.response.responseTime,
-                  timeline: error.response.timeline
-                };
-
-                // if we get a response from the server, we consider it as a success
-                sendRunnerResponseReceived({
-                  requestUid,
-                  error: error ? error.message : 'An error occurred while running the request',
-                  responseReceived: response,
-                  eventData
-                });
-              } else {
-                await executeRequestOnFailHandler(request, error, (onFailScriptResult) => {
-                  sendVariableUpdates(onFailScriptResult, { collectionUid, requestUid, collection });
-                });
-
-                // if it's not a network error, don't continue
-                throw error;
-              }
+              continue;
             }
 
-            let postResponseScriptResult;
-            let postResponseError = null;
             try {
-              postResponseScriptResult = await runPostResponse(
-                request,
-                response,
-                requestUid,
-                envVars,
-                collectionPath,
-                collection,
+            // Build certsAndProxyConfig for bru.sendRequest
+              const certsAndProxyConfig = await buildCertsAndProxyConfig({
                 collectionUid,
+                collection,
+                collectionPath,
+                envVars,
                 runtimeVariables,
                 processEnvVars,
-                scriptingConfig,
-                runRequestByItemPathname
-              );
-            } catch (error) {
-              console.error('Post-response script error:', error);
-              postResponseError = error;
-            }
-
-            // Extract partial results from error if available
-            // (e.g., if 2 tests pass then script throws, we still want to show those 2 passing tests)
-            if (postResponseError?.partialResults) {
-              postResponseScriptResult = postResponseError.partialResults;
-              sendVariableUpdates(postResponseScriptResult, { collectionUid, requestUid, collection });
-            }
-
-            postResponseScriptResult = appendScriptErrorResult('post-response', postResponseScriptResult, postResponseError);
-            emitRunnerScriptedRequestEvents('post-response', postResponseScriptResult);
-
-            notifyScriptExecution({
-              channel: 'main:run-folder-event',
-              basePayload: eventData,
-              scriptType: 'post-response',
-              error: postResponseError,
-              itemPathname: item.pathname,
-              collectionPath,
-              scriptMetadata: request.script?.resMetadata
-            });
-
-            const domainsWithCookiesPostResponse = await getDomainsWithCookies();
-            mainWindow.webContents.send('main:cookies-update', safeParseJSON(safeStringifyJSON(domainsWithCookiesPostResponse)));
-
-            if (postResponseScriptResult?.nextRequestName !== undefined) {
-              nextRequestName = postResponseScriptResult.nextRequestName;
-            }
-
-            if (postResponseScriptResult?.stopExecution) {
-              stopRunnerExecution = true;
-            }
-
-            // Send post-response test results if available
-            if (postResponseScriptResult?.results) {
-              mainWindow.webContents.send('main:run-folder-event', {
-                type: 'test-results-post-response',
-                postResponseTestResults: postResponseScriptResult.results,
-                ...eventData
+                request
               });
-            }
 
-            // run assertions
-            const assertions = get(item, 'request.assertions');
-            if (assertions) {
-              const assertRuntime = new AssertRuntime({ runtime: scriptingConfig?.runtime });
-              const results = assertRuntime.runAssertions(
-                assertions,
-                request,
-                response,
-                envVars,
-                runtimeVariables,
-                processEnvVars
-              );
+              // Add certsAndProxyConfig to request object for bru.sendRequest
+              request.certsAndProxyConfig = certsAndProxyConfig;
 
-              mainWindow.webContents.send('main:run-folder-event', {
-                type: 'assertion-results',
-                assertionResults: results,
-                itemUid: item.uid,
-                collectionUid
-              });
-            }
-
-            const testFile = get(request, 'tests');
-            const collectionName = collection?.name;
-            if (typeof testFile === 'string') {
-              let testResults = null;
-              let testError = null;
-
+              let preRequestScriptResult;
+              let preRequestError = null;
               try {
-                const testRuntime = new TestRuntime({ runtime: scriptingConfig?.runtime });
-                testResults = await testRuntime.runTests(
-                  decomment(testFile, { space: true }),
+                preRequestScriptResult = await runPreRequest(
                   request,
-                  response,
+                  requestUid,
                   envVars,
-                  runtimeVariables,
                   collectionPath,
-                  onConsoleLog,
+                  collection,
+                  collectionUid,
+                  runtimeVariables,
                   processEnvVars,
                   scriptingConfig,
-                  runRequestByItemPathname,
-                  collectionName
+                  runRequestByItemPathname
                 );
               } catch (error) {
-                testError = error;
-
-                if (error.partialResults) {
-                  testResults = error.partialResults;
-                } else {
-                  testResults = {
-                    request,
-                    envVariables: envVars,
-                    runtimeVariables,
-                    globalEnvironmentVariables: request?.globalEnvironmentVariables || {},
-                    results: [],
-                    nextRequestName: null
-                  };
-                }
+                console.error('Pre-request script error:', error);
+                preRequestError = error;
               }
 
-              testResults = appendScriptErrorResult('test', testResults, testError);
-              emitRunnerScriptedRequestEvents('tests', testResults);
-
-              if (testResults?.nextRequestName !== undefined) {
-                nextRequestName = testResults.nextRequestName;
+              if (preRequestError?.partialResults) {
+                preRequestScriptResult = preRequestError.partialResults;
+                sendVariableUpdates(preRequestScriptResult, { collectionUid, requestUid, collection });
               }
 
-              if (testResults?.stopExecution) {
-                stopRunnerExecution = true;
+              preRequestScriptResult = appendScriptErrorResult('pre-request', preRequestScriptResult, preRequestError);
+              emitRunnerScriptedRequestEvents('pre-request', preRequestScriptResult);
+
+              if (preRequestScriptResult?.results) {
+                mainWindow.webContents.send('main:run-folder-event', {
+                  type: 'test-results-pre-request',
+                  preRequestTestResults: preRequestScriptResult.results,
+                  ...eventData
+                });
               }
-
-              mainWindow.webContents.send('main:run-folder-event', {
-                type: 'test-results',
-                testResults: testResults.results,
-                ...eventData
-              });
-
-              sendVariableUpdates(testResults, { collectionUid, requestUid, collection });
-              resetOauth2Credentials({ oauth2CredentialsToReset: testResults.oauth2CredentialsToReset, request, collectionUid });
 
               notifyScriptExecution({
                 channel: 'main:run-folder-event',
                 basePayload: eventData,
-                scriptType: 'test',
-                error: testError,
+                scriptType: 'pre-request',
+                error: preRequestError,
                 itemPathname: item.pathname,
                 collectionPath,
-                scriptMetadata: request.testsMetadata
+                scriptMetadata: request.script?.reqMetadata
               });
 
-              const domainsWithCookiesTest = await getDomainsWithCookies();
-              mainWindow.webContents.send('main:cookies-update', safeParseJSON(safeStringifyJSON(domainsWithCookiesTest)));
+              const domainsWithCookiesPreRequest = await getDomainsWithCookies();
+              mainWindow.webContents.send('main:cookies-update', safeParseJSON(safeStringifyJSON(domainsWithCookiesPreRequest)));
+
+              if (preRequestError) {
+                throw preRequestError;
+              }
+
+              if (preRequestScriptResult?.nextRequestName !== undefined) {
+                nextRequestName = preRequestScriptResult.nextRequestName;
+              }
+
+              if (preRequestScriptResult?.stopExecution) {
+                stopRunnerExecution = true;
+              }
+
+              if (preRequestScriptResult?.skipRequest) {
+                mainWindow.webContents.send('main:run-folder-event', {
+                  type: 'runner-request-skipped',
+                  error: 'Request has been skipped from pre-request script',
+                  responseReceived: {
+                    status: 'skipped',
+                    statusText: 'request skipped via pre-request script',
+                    data: null,
+                    responseTime: 0,
+                    headers: null
+                  },
+                  ...eventData
+                });
+                currentRequestIndex++;
+                continue;
+              }
+
+              const { data: requestData, dataBuffer: requestDataBuffer } = parseDataFromRequest(request);
+
+              // Remove false Content-Type header (used to stop axios from auto-setting it); no Content-Type was actually set or sent.
+              const headersSent = { ...request.headers };
+              Object.keys(headersSent).forEach((key) => {
+                if (key.toLowerCase() === 'content-type' && headersSent[key] === false) {
+                  delete headersSent[key];
+                }
+              });
+
+              let requestSent = {
+                url: request.url,
+                method: request.method,
+                headers: headersSent,
+                data: requestData,
+                dataBuffer: requestDataBuffer,
+                timestamp: Date.now()
+              };
+
+              // todo:
+              // i have no clue why electron can't send the request object
+              // without safeParseJSON(safeStringifyJSON(request.data))
+              sendRunnerRequestSent({ requestUid, requestSent, eventData });
+
+              currentAbortController = new AbortController();
+              request.signal = currentAbortController.signal;
+              request.responseType = 'stream';
+              const axiosInstance = await configureRequest(
+                collectionUid,
+                collection,
+                request,
+                envVars,
+                runtimeVariables,
+                processEnvVars,
+                collectionPath,
+                collection.globalEnvironmentVariables
+              );
+
+              if (request.oauth2Credentials?.credentials && request.oauth2Credentials?.credentialsId) {
+                mainWindow.webContents.send('main:credentials-update', {
+                  credentials: request?.oauth2Credentials?.credentials,
+                  url: request?.oauth2Credentials?.url,
+                  collectionUid,
+                  credentialsId: request?.oauth2Credentials?.credentialsId,
+                  ...(request?.oauth2Credentials?.folderUid ? { folderUid: request.oauth2Credentials.folderUid } : { itemUid: item.uid }),
+                  debugInfo: request?.oauth2Credentials?.debugInfo,
+                  // Reducer updates the cache but skips the timeline push for 'runner'.
+                  executionMode: 'runner'
+                });
+
+                // RunnerTimeline reads oauth from the runner item, not collection.timeline.
+                if (request.oauth2Credentials.debugInfo) {
+                  mainWindow.webContents.send('main:run-folder-event', {
+                    type: 'oauth2-debug',
+                    ...eventData,
+                    url: request.oauth2Credentials.url,
+                    credentialsId: request.oauth2Credentials.credentialsId,
+                    debugInfo: request.oauth2Credentials.debugInfo
+                  });
+                }
+
+                const { credentialsId, credentials } = request.oauth2Credentials;
+                request.oauth2CredentialVariables = request.oauth2CredentialVariables || {};
+                Object.entries(credentials).forEach(([key, value]) => {
+                  request.oauth2CredentialVariables[`$oauth2.${credentialsId}.${key}`] = value;
+                });
+
+                collection.oauth2Credentials = updateCollectionOauth2Credentials({
+                  itemUid: item.uid,
+                  collectionUid,
+                  collectionOauth2Credentials: collection.oauth2Credentials,
+                  requestOauth2Credentials: request.oauth2Credentials
+                });
+              }
+
+              timeStart = Date.now();
+              let response, responseTime;
+              try {
+                if (delay && !Number.isNaN(delay) && delay > 0) {
+                  const delayPromise = new Promise((resolve) => setTimeout(resolve, delay));
+
+                  const cancellationPromise = new Promise((_, reject) => {
+                    abortController.signal.addEventListener('abort', () => {
+                      reject(new Error('Cancelled'));
+                    });
+                  });
+
+                  await Promise.race([delayPromise, cancellationPromise]);
+                }
+
+                /** @type {import('axios').AxiosResponse} */
+                response = await axiosInstance(refreshExplicitHeaderNames(request));
+                response.data = await promisifyStream(response.data, currentAbortController, false);
+                timeEnd = Date.now();
+
+                const { data, dataBuffer } = parseDataFromResponse(response, request.__brunoDisableParsingResponseJson);
+                response.data = data;
+                response.dataBuffer = dataBuffer;
+                response.responseTime = response.headers.get('request-duration');
+                response.headers.delete('request-duration');
+
+                // save cookies
+                if (preferencesUtil.shouldStoreCookies()) {
+                  saveCookies(request.url, response.headers);
+                }
+
+                // send domain cookies to renderer
+                const domainsWithCookies = await getDomainsWithCookies();
+
+                mainWindow.webContents.send('main:cookies-update', safeParseJSON(safeStringifyJSON(domainsWithCookies)));
+
+                sendRunnerResponseReceived({
+                  requestUid,
+                  responseReceived: {
+                    status: response.status,
+                    statusText: response.statusText,
+                    headers: response.headers,
+                    duration: timeEnd - timeStart,
+                    dataBuffer: dataBuffer.toString('base64'),
+                    size: Buffer.byteLength(dataBuffer),
+                    data: response.data,
+                    responseTime: response.responseTime,
+                    timeline: response.timeline,
+                    url: response.request ? response.request.protocol + '//' + response.request.host + response.request.path : null
+                  },
+                  eventData
+                });
+              } catch (error) {
+              // Skip further processing if request was cancelled
+                if (axios.isCancel(error)) {
+                  throw error;
+                }
+
+                if (error?.response) {
+                  error.response.data = await promisifyStream(error.response.data, currentAbortController, false);
+                  const { data, dataBuffer } = parseDataFromResponse(error.response);
+                  error.response.responseTime = error.response.headers.get('request-duration');
+                  error.response.headers.delete('request-duration');
+                  error.response.data = data;
+                  error.response.dataBuffer = dataBuffer;
+
+                  // save cookies (4XX/5XX responses can also set cookies)
+                  if (preferencesUtil.shouldStoreCookies()) {
+                    saveCookies(request.url, error.response.headers);
+                  }
+
+                  timeEnd = Date.now();
+                  response = {
+                    status: error.response.status,
+                    statusText: error.response.statusText,
+                    headers: error.response.headers,
+                    duration: timeEnd - timeStart,
+                    dataBuffer: dataBuffer.toString('base64'),
+                    size: Buffer.byteLength(dataBuffer),
+                    data: error.response.data,
+                    responseTime: error.response.responseTime,
+                    timeline: error.response.timeline
+                  };
+
+                  // if we get a response from the server, we consider it as a success
+                  sendRunnerResponseReceived({
+                    requestUid,
+                    error: error ? error.message : 'An error occurred while running the request',
+                    responseReceived: response,
+                    eventData
+                  });
+                } else {
+                  await executeRequestOnFailHandler(request, error, (onFailScriptResult) => {
+                    sendVariableUpdates(onFailScriptResult, { collectionUid, requestUid, collection });
+                  });
+
+                  // if it's not a network error, don't continue
+                  throw error;
+                }
+              }
+
+              let postResponseScriptResult;
+              let postResponseError = null;
+              try {
+                postResponseScriptResult = await runPostResponse(
+                  request,
+                  response,
+                  requestUid,
+                  envVars,
+                  collectionPath,
+                  collection,
+                  collectionUid,
+                  runtimeVariables,
+                  processEnvVars,
+                  scriptingConfig,
+                  runRequestByItemPathname
+                );
+              } catch (error) {
+                console.error('Post-response script error:', error);
+                postResponseError = error;
+              }
+
+              // Extract partial results from error if available
+              // (e.g., if 2 tests pass then script throws, we still want to show those 2 passing tests)
+              if (postResponseError?.partialResults) {
+                postResponseScriptResult = postResponseError.partialResults;
+                sendVariableUpdates(postResponseScriptResult, { collectionUid, requestUid, collection });
+              }
+
+              postResponseScriptResult = appendScriptErrorResult('post-response', postResponseScriptResult, postResponseError);
+              emitRunnerScriptedRequestEvents('post-response', postResponseScriptResult);
+
+              notifyScriptExecution({
+                channel: 'main:run-folder-event',
+                basePayload: eventData,
+                scriptType: 'post-response',
+                error: postResponseError,
+                itemPathname: item.pathname,
+                collectionPath,
+                scriptMetadata: request.script?.resMetadata
+              });
+
+              const domainsWithCookiesPostResponse = await getDomainsWithCookies();
+              mainWindow.webContents.send('main:cookies-update', safeParseJSON(safeStringifyJSON(domainsWithCookiesPostResponse)));
+
+              if (postResponseScriptResult?.nextRequestName !== undefined) {
+                nextRequestName = postResponseScriptResult.nextRequestName;
+              }
+
+              if (postResponseScriptResult?.stopExecution) {
+                stopRunnerExecution = true;
+              }
+
+              // Send post-response test results if available
+              if (postResponseScriptResult?.results) {
+                mainWindow.webContents.send('main:run-folder-event', {
+                  type: 'test-results-post-response',
+                  postResponseTestResults: postResponseScriptResult.results,
+                  ...eventData
+                });
+              }
+
+              // run assertions
+              const assertions = get(item, 'request.assertions');
+              if (assertions) {
+                const assertRuntime = new AssertRuntime({ runtime: scriptingConfig?.runtime });
+                const results = assertRuntime.runAssertions(
+                  assertions,
+                  request,
+                  response,
+                  envVars,
+                  runtimeVariables,
+                  processEnvVars
+                );
+
+                mainWindow.webContents.send('main:run-folder-event', {
+                  type: 'assertion-results',
+                  assertionResults: results,
+                  itemUid: item.uid,
+                  collectionUid
+                });
+              }
+
+              const testFile = get(request, 'tests');
+              const collectionName = collection?.name;
+              if (typeof testFile === 'string') {
+                let testResults = null;
+                let testError = null;
+
+                try {
+                  const testRuntime = new TestRuntime({ runtime: scriptingConfig?.runtime });
+                  testResults = await testRuntime.runTests(
+                    decomment(testFile, { space: true }),
+                    request,
+                    response,
+                    envVars,
+                    runtimeVariables,
+                    collectionPath,
+                    onConsoleLog,
+                    processEnvVars,
+                    scriptingConfig,
+                    runRequestByItemPathname,
+                    collectionName
+                  );
+                } catch (error) {
+                  testError = error;
+
+                  if (error.partialResults) {
+                    testResults = error.partialResults;
+                  } else {
+                    testResults = {
+                      request,
+                      envVariables: envVars,
+                      runtimeVariables,
+                      globalEnvironmentVariables: request?.globalEnvironmentVariables || {},
+                      results: [],
+                      nextRequestName: null
+                    };
+                  }
+                }
+
+                testResults = appendScriptErrorResult('test', testResults, testError);
+                emitRunnerScriptedRequestEvents('tests', testResults);
+
+                if (testResults?.nextRequestName !== undefined) {
+                  nextRequestName = testResults.nextRequestName;
+                }
+
+                if (testResults?.stopExecution) {
+                  stopRunnerExecution = true;
+                }
+
+                mainWindow.webContents.send('main:run-folder-event', {
+                  type: 'test-results',
+                  testResults: testResults.results,
+                  ...eventData
+                });
+
+                sendVariableUpdates(testResults, { collectionUid, requestUid, collection });
+                resetOauth2Credentials({ oauth2CredentialsToReset: testResults.oauth2CredentialsToReset, request, collectionUid });
+
+                notifyScriptExecution({
+                  channel: 'main:run-folder-event',
+                  basePayload: eventData,
+                  scriptType: 'test',
+                  error: testError,
+                  itemPathname: item.pathname,
+                  collectionPath,
+                  scriptMetadata: request.testsMetadata
+                });
+
+                const domainsWithCookiesTest = await getDomainsWithCookies();
+                mainWindow.webContents.send('main:cookies-update', safeParseJSON(safeStringifyJSON(domainsWithCookiesTest)));
+              }
+            } catch (error) {
+              mainWindow.webContents.send('main:run-folder-event', {
+                type: 'error',
+                error: error ? error.message : 'An error occurred while running the request',
+                responseReceived: {},
+                ...eventData
+              });
             }
-          } catch (error) {
-            mainWindow.webContents.send('main:run-folder-event', {
-              type: 'error',
-              error: error ? error.message : 'An error occurred while running the request',
-              responseReceived: {},
-              ...eventData
-            });
+
+            if (stopRunnerExecution) {
+              deleteCancelToken(cancelTokenUid);
+              mainWindow.webContents.send('main:run-folder-event', {
+                type: 'testrun-ended',
+                collectionUid,
+                folderUid,
+                statusText: 'collection run was terminated!',
+                runCompletionTime: new Date().toISOString()
+              });
+              break;
+            }
+
+            if (nextRequestName !== undefined) {
+              nJumps++;
+              if (nJumps > 10000) {
+                throw new Error('Too many jumps, possible infinite loop');
+              }
+              if (nextRequestName === null) {
+                break;
+              }
+              const nextRequestIdx = folderRequests.findIndex((request) => request.name === nextRequestName);
+              if (nextRequestIdx >= 0) {
+                currentRequestIndex = nextRequestIdx;
+              } else {
+                console.error('Could not find request with name \'' + nextRequestName + '\'');
+                currentRequestIndex++;
+              }
+            } else {
+              currentRequestIndex++;
+            }
           }
 
           if (stopRunnerExecution) {
-            deleteCancelToken(cancelTokenUid);
-            mainWindow.webContents.send('main:run-folder-event', {
-              type: 'testrun-ended',
-              collectionUid,
-              folderUid,
-              statusText: 'collection run was terminated!',
-              runCompletionTime: new Date().toISOString()
-            });
             break;
-          }
-
-          if (nextRequestName !== undefined) {
-            nJumps++;
-            if (nJumps > 10000) {
-              throw new Error('Too many jumps, possible infinite loop');
-            }
-            if (nextRequestName === null) {
-              break;
-            }
-            const nextRequestIdx = folderRequests.findIndex((request) => request.name === nextRequestName);
-            if (nextRequestIdx >= 0) {
-              currentRequestIndex = nextRequestIdx;
-            } else {
-              console.error('Could not find request with name \'' + nextRequestName + '\'');
-              currentRequestIndex++;
-            }
-          } else {
-            currentRequestIndex++;
           }
         }
 
