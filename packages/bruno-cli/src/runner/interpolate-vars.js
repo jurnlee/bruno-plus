@@ -40,6 +40,7 @@ const interpolateVars = (request, envVariables = {}, runtimeVariables = {}, proc
   const folderVariables = request?.folderVariables || {};
   const requestVariables = request?.requestVariables || {};
   const oauth2CredentialVariables = request?.oauth2CredentialVariables || {};
+  const dataVariables = request?.dataVariables || {};
   // we clone envVars because we don't want to modify the original object
   envVariables = cloneDeep(envVariables);
 
@@ -68,6 +69,7 @@ const interpolateVars = (request, envVariables = {}, runtimeVariables = {}, proc
       ...folderVariables,
       ...requestVariables,
       ...oauth2CredentialVariables,
+      ...dataVariables,
       ...runtimeVariables,
       process: {
         env: {

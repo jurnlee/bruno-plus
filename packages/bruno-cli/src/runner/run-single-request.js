@@ -113,7 +113,8 @@ const runSingleRequest = async function (
   collection,
   runSingleRequestByPathname,
   globalEnvVars = {},
-  persistPaths = {}
+  persistPaths = {},
+  dataContext = {}
 ) {
   const syncVariableUpdates = (result, currentRequest) => {
     if (!result) return;
@@ -179,6 +180,11 @@ const runSingleRequest = async function (
     let postResponseTestResults = [];
 
     request = await prepareRequest(item, collection);
+
+    if (dataContext?.dataVariables) {
+      request.dataVariables = dataContext.dataVariables;
+      request.iterationInfo = dataContext.iterationInfo;
+    }
 
     // Set global environment variables on the request for scripts to access via bru.getGlobalEnvVar()
     request.globalEnvironmentVariables = globalEnvVars;

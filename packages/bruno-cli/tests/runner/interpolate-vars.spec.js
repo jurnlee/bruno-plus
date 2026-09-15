@@ -133,4 +133,25 @@ describe('interpolate-vars: digest auth', () => {
 
     expect(request.digestConfig).toEqual({ username: 'user', password: 'passwd' });
   });
+
+  describe('data variables layer', () => {
+    it('data row overrides env/request vars but not runtime vars', () => {
+      const request = {
+        url: '{{token}}', method: 'GET', headers: {},
+        requestVariables: { token: 'request' },
+        dataVariables: { token: 'data' }
+      };
+      expect(interpolateVars(request, { token: 'env' }, { token: 'runtime' }, {}).url).toBe('runtime');
+    });
+
+    it('data row wins when no runtime var exists', () => {
+      const request = { url: '{{token}}', method: 'GET', headers: {}, dataVariables: { token: 'data' } };
+      expect(interpolateVars(request, { token: 'env' }, {}, {}).url).toBe('data');
+    });
+
+    it('no dataVariables keeps prior behavior', () => {
+      const request = { url: '{{token}}', method: 'GET', headers: {} };
+      expect(interpolateVars(request, { token: 'env' }, {}, {}).url).toBe('env');
+    });
+  });
 });

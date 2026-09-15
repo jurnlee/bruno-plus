@@ -1,5 +1,5 @@
 const fs = require('fs');
-const { generateHtmlReport } = require('@usebruno/common/runner');
+const { generateHtmlReport, getRunnerSummary } = require('@usebruno/common/runner');
 const { CLI_VERSION } = require('../constants');
 
 const makeHtmlOutput = async (results, outputPath, runCompletionTime, environment = null) => {
@@ -7,12 +7,18 @@ const makeHtmlOutput = async (results, outputPath, runCompletionTime, environmen
   if (!results) {
     runnerResults = [];
   } else if (results.results) {
-    // Convert CLI format to expected format: array of { iterationIndex, results, summary }
-    runnerResults = [{
-      iterationIndex: 0,
-      results: results.results,
-      summary: results.summary
-    }];
+    // Convert CLI format to expected format: array of { iterationIndex, results, summary }.
+    // Data-driven runs carry a 1-based iteration on each result — bucket them so every
+    // iteration renders its own block with its own summary.
+    const iterations = [...new Set(results.results.map((r) => r.iteration || 1))].sort((a, b) => a - b);
+    runnerResults = iterations.map((iteration) => {
+      const iterationResults = results.results.filter((r) => (r.iteration || 1) === iteration);
+      return {
+        iterationIndex: iteration - 1,
+        results: iterationResults,
+        summary: getRunnerSummary(iterationResults)
+      };
+    });
   } else if (Array.isArray(results)) {
     runnerResults = results;
   }
