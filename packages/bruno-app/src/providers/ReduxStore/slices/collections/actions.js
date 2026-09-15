@@ -57,6 +57,7 @@ import {
   collectionClearOauth2CredentialsByUrlAndCredentialsId,
   initRunRequestEvent,
   updateRunnerConfiguration as _updateRunnerConfiguration,
+  updateRunnerDataFile as _updateRunnerDataFile,
   updateActiveConnections,
   saveRequest as _saveRequest,
   saveEnvironment as _saveEnvironment,
@@ -752,7 +753,7 @@ export const cancelRunnerExecution = (cancelTokenUid) => (dispatch) => {
 };
 
 export const runCollectionFolder
-  = (collectionUid, folderUid, recursive, delay, tags, selectedRequestUids) => (dispatch, getState) => {
+  = (collectionUid, folderUid, recursive, delay, tags, selectedRequestUids, dataFilePath) => (dispatch, getState) => {
     const state = getState();
     const { globalEnvironments, activeGlobalEnvironmentUid } = state.globalEnvironments;
     const collection = findCollectionByUid(state.collections.collections, collectionUid);
@@ -799,7 +800,8 @@ export const runCollectionFolder
           recursive,
           delay,
           tags,
-          selectedRequestUids
+          selectedRequestUids,
+          dataFilePath
         )
         .then(resolve)
         .catch((err) => {
@@ -3435,6 +3437,10 @@ export const updateRunnerConfiguration
       })
     );
   };
+
+export const updateRunnerDataFile = (collectionUid, dataFilePath) => (dispatch) => {
+  dispatch(_updateRunnerDataFile({ collectionUid, dataFilePath }));
+};
 
 export const updateActiveConnectionsInStore = (activeConnectionIds) => (dispatch, getState) => {
   dispatch(updateActiveConnections(activeConnectionIds));

@@ -3528,6 +3528,12 @@ export const collectionsSlice = createSlice({
           info.isRecursive = isRecursive;
           info.cancelTokenUid = cancelTokenUid;
           info.status = 'started';
+          if (action.payload.iterationCount !== undefined) {
+            info.iterationCount = action.payload.iterationCount;
+          }
+          if (action.payload.dataFilePath !== undefined) {
+            info.dataFilePath = action.payload.dataFilePath;
+          }
         }
 
         if (type === 'testrun-ended') {
@@ -3551,7 +3557,8 @@ export const collectionsSlice = createSlice({
           collection.runnerResult.items.push({
             uid: request.uid,
             requestUid: action.payload.requestUid,
-            status: 'queued'
+            status: 'queued',
+            iteration: action.payload.iteration
           });
         }
 
@@ -3682,6 +3689,16 @@ export const collectionsSlice = createSlice({
           selectedRequestItems: selectedRequestItems || [],
           requestItemsOrder: requestItemsOrder || [],
           ...(delay !== undefined && { delay })
+        };
+      }
+    },
+    updateRunnerDataFile: (state, action) => {
+      const { collectionUid, dataFilePath } = action.payload;
+      const collection = findCollectionByUid(state.collections, collectionUid);
+      if (collection) {
+        collection.runnerConfiguration = {
+          ...collection.runnerConfiguration,
+          dataFilePath: dataFilePath ?? null
         };
       }
     },
@@ -4364,6 +4381,7 @@ export const {
   resetCollectionRunner,
   updateRunnerTagsDetails,
   updateRunnerConfiguration,
+  updateRunnerDataFile,
   updateRequestDocs,
   updateFolderDocs,
   toggleCollectionFileMode,
