@@ -286,6 +286,36 @@ describe('interpolate-vars: interpolateVars', () => {
         expect(result.body.json).toEqual('{"token": "abc123"}');
       });
     });
+    describe('With data variables (collection runner data rows)', () => {
+      it('interpolates {{var}} from request.dataVariables', async () => {
+        const request = {
+          method: 'GET',
+          url: 'https://api.example/users/{{userId}}',
+          headers: { Authorization: 'Bearer {{token}}' },
+          dataVariables: { userId: '42', token: 'data-token' }
+        };
+
+        const result = interpolateVars(request, {}, {}, {});
+        expect(result.url).toBe('https://api.example/users/42');
+        expect(result.headers.Authorization).toBe('Bearer data-token');
+      });
+
+      it('data variables override env variables but not runtime variables', async () => {
+        const request = {
+          method: 'GET',
+          url: '{{token}}/{{userId}}',
+          dataVariables: { token: 'from-data', userId: 'from-data' }
+        };
+
+        const result = interpolateVars(
+          request,
+          { token: 'from-env' }, // envVariables
+          { userId: 'from-runtime' }, // runtimeVariables
+          {} // processEnvVars
+        );
+        expect(result.url).toBe('from-data/from-runtime');
+      });
+    });
   });
 
   describe('Does NOT interpolate string', () => {
