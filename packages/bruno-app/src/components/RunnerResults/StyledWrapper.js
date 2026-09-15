@@ -66,6 +66,26 @@ const Wrapper = styled.div`
     color: ${(props) => props.theme.colors.text.green};
   }
 
+  .iteration-group {
+    display: flex;
+    align-items: baseline;
+    gap: 0.5rem;
+    margin-top: 0.75rem;
+    padding: 0.25rem 0.5rem;
+    font-size: ${(props) => props.theme.font.size.xs};
+    font-weight: 500;
+    background-color: ${(props) => props.theme.background.surface0};
+    border-radius: ${(props) => props.theme.border.radius.sm};
+    position: sticky;
+    top: 0;
+    z-index: 1;
+
+    .group-stats {
+      font-weight: 400;
+      color: ${(props) => props.theme.colors.text.muted};
+    }
+  }
+
   .test-failure {
     color: ${(props) => props.theme.colors.text.danger};
 

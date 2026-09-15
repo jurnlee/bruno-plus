@@ -11,6 +11,7 @@ import ResponsePane from './ResponsePane';
 import StyledWrapper from './StyledWrapper';
 import RunnerTags from './RunnerTags/index';
 import RunConfigurationPanel from './RunConfigurationPanel';
+import DataFilePanel from './DataFilePanel';
 import Button from 'ui/Button/index';
 
 const getDisplayName = (fullPath, pathname, name = '') => {
@@ -82,6 +83,7 @@ export default function RunnerResults({ collection }) {
   const [delay, setDelay] = useState(null);
   const [activeFilter, setActiveFilter] = useState('all');
   const [selectedRequestItems, setSelectedRequestItems] = useState([]);
+  const [dataFileStatus, setDataFileStatus] = useState(null);
   const isReRunningRef = useRef(false);
   // ref for the runner output body
   const runnerBodyRef = useRef();
@@ -124,6 +126,13 @@ export default function RunnerResults({ collection }) {
 
   const activeFilterConfig = FILTERS[activeFilter];
   const filteredItems = items.filter(activeFilterConfig.predicate);
+
+  const dataFilePath = dataFileStatus?.filePath || null;
+  const dataFileHasErrors = Boolean(
+    dataFileStatus
+    && (dataFileStatus.errors?.length
+      || (dataFileStatus.filePath && dataFileStatus.rows?.length === 0 && !dataFileStatus.isLoading))
+  );
 
   const filterTestResults = (results) => {
     if (!results || !Array.isArray(results)) return [];
@@ -191,7 +200,7 @@ export default function RunnerResults({ collection }) {
     const savedOrder = get(collection, 'runnerConfiguration.requestItemsOrder', selectedRequestItems);
     dispatch(updateRunnerConfiguration(collection.uid, selectedRequestItems, savedOrder, delay));
     await clearStoredRunnerExchanges();
-    dispatch(runCollectionFolder(collection.uid, null, true, Number(delay), tags, selectedRequestItems));
+    dispatch(runCollectionFolder(collection.uid, null, true, Number(delay), tags, selectedRequestItems, dataFilePath));
   };
 
   const runAgain = async () => {
@@ -201,6 +210,7 @@ export default function RunnerResults({ collection }) {
     const savedConfiguration = get(collection, 'runnerConfiguration', null);
     const savedSelectedItems = savedConfiguration?.selectedRequestItems || [];
     const savedDelay = savedConfiguration?.delay !== undefined ? savedConfiguration.delay : delay;
+    const savedDataFilePath = get(collection, 'runnerConfiguration.dataFilePath', null);
     await clearStoredRunnerExchanges();
     dispatch(
       runCollectionFolder(
@@ -209,7 +219,8 @@ export default function RunnerResults({ collection }) {
         true,
         Number(savedDelay),
         tags,
-        savedSelectedItems
+        savedSelectedItems,
+        savedDataFilePath
       )
     );
   };
@@ -236,6 +247,20 @@ export default function RunnerResults({ collection }) {
     failed: items.filter(anyTestFailed).length,
     skipped: items.filter((i) => i.status === 'skipped').length
   };
+
+  // Data-driven runs render one section per iteration; single-pass runs keep the flat list.
+  // Group stats reuse the filterCounts predicates so headers match the top totals.
+  const isDataDriven = get(collection, 'runnerResult.info.iterationCount', 0) > 1;
+  const groupedItems = isDataDriven
+    ? filteredItems.reduce((groups, item) => {
+        const key = item.iteration || 1;
+        (groups[key] = groups[key] || []).push(item);
+        return groups;
+      }, {})
+    : { 1: filteredItems };
+  const currentIteration = isDataDriven && runnerInfo.status === 'started'
+    ? (items.length ? items[items.length - 1].iteration || 1 : 1)
+    : null;
 
   const isCollectionLoading = areItemsLoading(collection);
   if ((!items || !items.length) && !isReRunningRef.current) {
@@ -277,19 +302,26 @@ export default function RunnerResults({ collection }) {
 
             {/* Filters */}
             <div className="runner-section-title mt-6">Filters</div>
-            <div className="runner-section mt-2 mb-6">
+            <div className="runner-section mt-2">
               {/* Tags for the collection run */}
               <RunnerTags collectionUid={collection.uid} />
             </div>
 
-            <div className="flex flex-row gap-2">
+            {/* Data */}
+            <div className="runner-section-title mt-6">Data</div>
+            <div className="runner-section mt-2">
+              <DataFilePanel collection={collection} onStatusChange={setDataFileStatus} />
+            </div>
+
+            <div className="flex flex-row gap-2 mt-6">
               <Button
                 type="submit"
                 data-testid="runner-run-button"
-                disabled={selectedRequestItems.length === 0 || isCollectionLoading}
+                disabled={selectedRequestItems.length === 0 || isCollectionLoading || dataFileHasErrors}
                 onClick={runCollection}
               >
                 Run {selectedRequestItems.length} Request{selectedRequestItems.length !== 1 ? 's' : ''}
+                {dataFilePath && !dataFileHasErrors ? ` × ${dataFileStatus.rows.length} iteration${dataFileStatus.rows.length !== 1 ? 's' : ''}` : ''}
               </Button>
 
               <Button type="button" variant="ghost" onClick={resetRunner}>
@@ -393,135 +425,155 @@ export default function RunnerResults({ collection }) {
                 </div>
               )
             : null}
+          {currentIteration ? (
+            <div className="pb-2 text-xs text-muted" data-testid="runner-iteration-progress">
+              Iteration {currentIteration} / {runnerInfo.iterationCount}
+            </div>
+          ) : null}
 
           {/* Items list */}
           <div className="overflow-y-auto flex-1 " ref={runnerBodyRef}>
-            {filteredItems.map((item) => {
-              return (
-                <div key={item.uid}>
-                  <div className="item-path mt-2" data-testid="runner-result-item">
-                    <div className="flex items-center">
-                      <span>
-                        {allTestsPassed(item)
-                          ? <IconCircleCheck className="test-success" size={20} strokeWidth={1.5} />
-                          : null}
-                        {item.status === 'skipped'
-                          ? <IconCircleOff className="skipped-request" size={20} strokeWidth={1.5} />
-                          : null}
-                        {anyTestFailed(item)
-                          ? <IconCircleX className="test-failure" size={20} strokeWidth={1.5} />
-                          : null}
-                      </span>
-                      <span
-                        className={`mr-1 ml-2 ${item.status == 'skipped' ? 'skipped-request' : anyTestFailed(item) ? 'danger' : ''}`}
-                      >
-                        {item.displayName}
-                      </span>
-                      {item.status !== 'error' && item.status !== 'skipped' && item.status !== 'completed' ? (
-                        <IconRefresh className="animate-spin ml-1" size={18} strokeWidth={1.5} />
-                      ) : item.responseReceived?.status ? (
-                        <span className="text-xs link cursor-pointer" onClick={() => setSelectedItem(item)}>
-                          <span className="mr-1">{item.responseReceived?.status}</span>
-                          -&nbsp;
-                          <span>{item.responseReceived?.statusText}</span>
-                        </span>
-                      ) : (
-                        <span className="danger text-xs cursor-pointer" onClick={() => setSelectedItem(item)}>
-                          (request failed)
-                        </span>
-                      )}
-                    </div>
-                    {areTagsAdded && item?.tags?.length > 0 && (
-                      <div className="pl-7 text-xs text-muted">
-                        Tags: {item.tags.filter((t) => tags.include.includes(t)).join(', ')}
-                      </div>
-                    )}
-                    {item.status == 'error' ? <div className="error-message pl-8 pt-2 text-xs" data-testid="runner-iteration-status-label">{item.error}</div> : null}
-
-                    <ul className="pl-8">
-                      {item.preRequestTestResults
-                        ? filterTestResults(item.preRequestTestResults).map((result) => (
-                            <li key={result.uid} data-testid={result.status === 'pass' ? 'runner-test-row-passed' : 'runner-test-row-failed'}>
-                              {result.status === 'pass' ? (
-                                <span className="test-success flex items-center">
-                                  <IconCheck size={18} strokeWidth={2} className="mr-2" />
-                                  {result.description}
-                                </span>
-                              ) : (
-                                <>
-                                  <span className="test-failure flex items-center">
-                                    <IconX size={18} strokeWidth={2} className="mr-2" />
-                                    {result.description}
-                                  </span>
-                                  <span className="error-message pl-8 text-xs">{result.error}</span>
-                                </>
-                              )}
-                            </li>
-                          ))
-                        : null}
-                      {item.postResponseTestResults
-                        ? filterTestResults(item.postResponseTestResults).map((result) => (
-                            <li key={result.uid} data-testid={result.status === 'pass' ? 'runner-test-row-passed' : 'runner-test-row-failed'}>
-                              {result.status === 'pass' ? (
-                                <span className="test-success flex items-center">
-                                  <IconCheck size={18} strokeWidth={2} className="mr-2" />
-                                  {result.description}
-                                </span>
-                              ) : (
-                                <>
-                                  <span className="test-failure flex items-center">
-                                    <IconX size={18} strokeWidth={2} className="mr-2" />
-                                    {result.description}
-                                  </span>
-                                  <span className="error-message pl-8 text-xs">{result.error}</span>
-                                </>
-                              )}
-                            </li>
-                          ))
-                        : null}
-                      {item.testResults
-                        ? filterTestResults(item.testResults).map((result) => (
-                            <li key={result.uid} data-testid={result.status === 'pass' ? 'runner-test-row-passed' : 'runner-test-row-failed'}>
-                              {result.status === 'pass' ? (
-                                <span className="test-success flex items-center">
-                                  <IconCheck size={18} strokeWidth={2} className="mr-2" />
-                                  {result.description}
-                                </span>
-                              ) : (
-                                <>
-                                  <span className="test-failure flex items-center">
-                                    <IconX size={18} strokeWidth={2} className="mr-2" />
-                                    {result.description}
-                                  </span>
-                                  <span className="error-message pl-8 text-xs">{result.error}</span>
-                                </>
-                              )}
-                            </li>
-                          ))
-                        : null}
-                      {filterTestResults(item.assertionResults).map((result) => (
-                        <li key={result.uid} data-testid={result.status === 'pass' ? 'runner-test-row-passed' : 'runner-test-row-failed'}>
-                          {result.status === 'pass' ? (
-                            <span className="test-success flex items-center">
-                              <IconCheck size={18} strokeWidth={2} className="mr-2" />
-                              {result.lhsExpr}: {result.rhsExpr}
+            {Object.entries(groupedItems).map(([iterationKey, groupItems]) => (
+              <div key={`iteration-${iterationKey}`}>
+                {isDataDriven ? (
+                  <div className="iteration-group" data-testid="runner-iteration-group">
+                    {`Iteration ${Number(iterationKey)} / ${runnerInfo.iterationCount}`}
+                    <span className="group-stats">
+                      {groupItems.filter(allTestsPassed).length} passed
+                      {groupItems.filter((i) => i.status === 'skipped').length > 0
+                        ? ` · ${groupItems.filter((i) => i.status === 'skipped').length} skipped`
+                        : ''}
+                    </span>
+                  </div>
+                ) : null}
+                {groupItems.map((item) => {
+                  return (
+                    <div key={item.requestUid || item.uid}>
+                      <div className="item-path mt-2" data-testid="runner-result-item">
+                        <div className="flex items-center">
+                          <span>
+                            {allTestsPassed(item)
+                              ? <IconCircleCheck className="test-success" size={20} strokeWidth={1.5} />
+                              : null}
+                            {item.status === 'skipped'
+                              ? <IconCircleOff className="skipped-request" size={20} strokeWidth={1.5} />
+                              : null}
+                            {anyTestFailed(item)
+                              ? <IconCircleX className="test-failure" size={20} strokeWidth={1.5} />
+                              : null}
+                          </span>
+                          <span
+                            className={`mr-1 ml-2 ${item.status == 'skipped' ? 'skipped-request' : anyTestFailed(item) ? 'danger' : ''}`}
+                          >
+                            {item.displayName}
+                          </span>
+                          {item.status !== 'error' && item.status !== 'skipped' && item.status !== 'completed' ? (
+                            <IconRefresh className="animate-spin ml-1" size={18} strokeWidth={1.5} />
+                          ) : item.responseReceived?.status ? (
+                            <span className="text-xs link cursor-pointer" onClick={() => setSelectedItem(item)}>
+                              <span className="mr-1">{item.responseReceived?.status}</span>
+                              -&nbsp;
+                              <span>{item.responseReceived?.statusText}</span>
                             </span>
                           ) : (
-                            <>
-                              <span className="test-failure flex items-center">
-                                <IconX size={18} strokeWidth={2} className="mr-2" />
-                                {result.lhsExpr}: {result.rhsExpr}
-                              </span>
-                              <span className="error-message pl-8 text-xs">{result.error}</span>
-                            </>
+                            <span className="danger text-xs cursor-pointer" onClick={() => setSelectedItem(item)}>
+                              (request failed)
+                            </span>
                           )}
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                </div>
-              );
-            })}
+                        </div>
+                        {areTagsAdded && item?.tags?.length > 0 && (
+                          <div className="pl-7 text-xs text-muted">
+                            Tags: {item.tags.filter((t) => tags.include.includes(t)).join(', ')}
+                          </div>
+                        )}
+                        {item.status == 'error' ? <div className="error-message pl-8 pt-2 text-xs" data-testid="runner-iteration-status-label">{item.error}</div> : null}
+
+                        <ul className="pl-8">
+                          {item.preRequestTestResults
+                            ? filterTestResults(item.preRequestTestResults).map((result) => (
+                                <li key={result.uid} data-testid={result.status === 'pass' ? 'runner-test-row-passed' : 'runner-test-row-failed'}>
+                                  {result.status === 'pass' ? (
+                                    <span className="test-success flex items-center">
+                                      <IconCheck size={18} strokeWidth={2} className="mr-2" />
+                                      {result.description}
+                                    </span>
+                                  ) : (
+                                    <>
+                                      <span className="test-failure flex items-center">
+                                        <IconX size={18} strokeWidth={2} className="mr-2" />
+                                        {result.description}
+                                      </span>
+                                      <span className="error-message pl-8 text-xs">{result.error}</span>
+                                    </>
+                                  )}
+                                </li>
+                              ))
+                            : null}
+                          {item.postResponseTestResults
+                            ? filterTestResults(item.postResponseTestResults).map((result) => (
+                                <li key={result.uid} data-testid={result.status === 'pass' ? 'runner-test-row-passed' : 'runner-test-row-failed'}>
+                                  {result.status === 'pass' ? (
+                                    <span className="test-success flex items-center">
+                                      <IconCheck size={18} strokeWidth={2} className="mr-2" />
+                                      {result.description}
+                                    </span>
+                                  ) : (
+                                    <>
+                                      <span className="test-failure flex items-center">
+                                        <IconX size={18} strokeWidth={2} className="mr-2" />
+                                        {result.description}
+                                      </span>
+                                      <span className="error-message pl-8 text-xs">{result.error}</span>
+                                    </>
+                                  )}
+                                </li>
+                              ))
+                            : null}
+                          {item.testResults
+                            ? filterTestResults(item.testResults).map((result) => (
+                                <li key={result.uid} data-testid={result.status === 'pass' ? 'runner-test-row-passed' : 'runner-test-row-failed'}>
+                                  {result.status === 'pass' ? (
+                                    <span className="test-success flex items-center">
+                                      <IconCheck size={18} strokeWidth={2} className="mr-2" />
+                                      {result.description}
+                                    </span>
+                                  ) : (
+                                    <>
+                                      <span className="test-failure flex items-center">
+                                        <IconX size={18} strokeWidth={2} className="mr-2" />
+                                        {result.description}
+                                      </span>
+                                      <span className="error-message pl-8 text-xs">{result.error}</span>
+                                    </>
+                                  )}
+                                </li>
+                              ))
+                            : null}
+                          {filterTestResults(item.assertionResults).map((result) => (
+                            <li key={result.uid} data-testid={result.status === 'pass' ? 'runner-test-row-passed' : 'runner-test-row-failed'}>
+                              {result.status === 'pass' ? (
+                                <span className="test-success flex items-center">
+                                  <IconCheck size={18} strokeWidth={2} className="mr-2" />
+                                  {result.lhsExpr}: {result.rhsExpr}
+                                </span>
+                              ) : (
+                                <>
+                                  <span className="test-failure flex items-center">
+                                    <IconX size={18} strokeWidth={2} className="mr-2" />
+                                    {result.lhsExpr}: {result.rhsExpr}
+                                  </span>
+                                  <span className="error-message pl-8 text-xs">{result.error}</span>
+                                </>
+                              )}
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            ))}
           </div>
         </div>
 
