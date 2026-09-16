@@ -13,12 +13,14 @@ pnpm-lock.yaml
 .pnp.js
 bun.lockb
 bun.lock
+package-lock.json
 
 # testing
 coverage
 
 # production
 build
+release
 chrome-extension
 chrome-extension.pem
 chrome-extension.crx
@@ -57,6 +59,7 @@ bruno.iml
 .agents
 .agent
 skills-lock.json
+.codegraph
 
 # Playwright
 /blob-report/
