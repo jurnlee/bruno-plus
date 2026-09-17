@@ -6,13 +6,17 @@ import { get } from 'lodash';
 import { runCollectionFolder, cancelRunnerExecution, mountCollection, updateRunnerConfiguration } from 'providers/ReduxStore/slices/collections/actions';
 import { resetCollectionRunner } from 'providers/ReduxStore/slices/collections';
 import { findItemInCollection, getTotalRequestCountInCollection, areItemsLoading } from 'utils/collections';
-import { IconRefresh, IconCircleCheck, IconCircleX, IconCircleOff, IconCheck, IconX, IconRun, IconExternalLink } from '@tabler/icons';
+import { IconRefresh, IconPlayerStop, IconCircleCheck, IconCircleX, IconCircleOff, IconCheck, IconX, IconRun, IconExternalLink, IconReload } from '@tabler/icons';
+import useContainerBreakpoint from 'hooks/useContainerBreakpoint';
 import ResponsePane from './ResponsePane';
 import StyledWrapper from './StyledWrapper';
 import RunnerTags from './RunnerTags/index';
+import RunnerFilter from './RunnerFilter';
 import RunConfigurationPanel from './RunConfigurationPanel';
 import DataFilePanel from './DataFilePanel';
 import Button from 'ui/Button/index';
+
+const TOOLBAR_BREAKPOINTS = { compact: 720, tiny: 560 };
 
 const getDisplayName = (fullPath, pathname, name = '') => {
   const relativePath = path.relative(fullPath, pathname);
@@ -66,17 +70,6 @@ const FILTERS = {
   }
 };
 
-// === Reusable filter button ===
-const FilterButton = ({ label, count, active, onClick }) => (
-  <button
-    onClick={onClick}
-    className={`filter-button ${active ? 'active' : ''}`}
-  >
-    {label}
-    <span className="filter-count">{count}</span>
-  </button>
-);
-
 export default function RunnerResults({ collection }) {
   const dispatch = useDispatch();
   const [selectedItem, setSelectedItem] = useState(null);
@@ -84,6 +77,7 @@ export default function RunnerResults({ collection }) {
   const [activeFilter, setActiveFilter] = useState('all');
   const [selectedRequestItems, setSelectedRequestItems] = useState([]);
   const [dataFileStatus, setDataFileStatus] = useState(null);
+  const [toolbarRef, toolbarBreakpointClass] = useContainerBreakpoint(TOOLBAR_BREAKPOINTS);
   const isReRunningRef = useRef(false);
   // ref for the runner output body
   const runnerBodyRef = useRef();
@@ -247,6 +241,11 @@ export default function RunnerResults({ collection }) {
     failed: items.filter(anyTestFailed).length,
     skipped: items.filter((i) => i.status === 'skipped').length
   };
+  const filterOptions = Object.entries(FILTERS).map(([key, { label }]) => ({
+    key,
+    label,
+    count: filterCounts[key]
+  }));
 
   // Data-driven runs render one section per iteration; single-pass runs keep the flat list.
   // Group stats reuse the filterCounts predicates so headers match the top totals.
@@ -346,45 +345,41 @@ export default function RunnerResults({ collection }) {
   return (
     <StyledWrapper className="px-4 pb-4 flex flex-grow flex-col relative overflow-auto">
       {/* Filter Bar and Actions */}
-      <div className="flex items-center justify-between mb-4 pt-[14px] gap-4">
-        <div className="filter-bar">
-          <div className="filter-label">
-            <span>Filter by:</span>
-          </div>
-          <div className="filter-buttons">
-            {Object.entries(FILTERS).map(([key, { label }]) => (
-              <FilterButton
-                key={key}
-                label={label}
-                count={filterCounts[key]}
-                active={activeFilter === key}
-                onClick={() => setActiveFilter(key)}
-              />
-            ))}
-          </div>
-        </div>
+      <div ref={toolbarRef} className={`flex items-center justify-between mb-4 pt-[14px] gap-4 min-w-0 ${toolbarBreakpointClass}`}>
+        <RunnerFilter
+          filters={filterOptions}
+          activeFilter={activeFilter}
+          onFilterChange={setActiveFilter}
+        />
 
         {runnerInfo.status !== 'ended' && runnerInfo.cancelTokenUid ? (
-          <div className="flex items-center flex-shrink-0">
+          <div className="runner-actions flex items-center flex-shrink-0">
             <Button
               type="button"
               onClick={cancelExecution}
               size="sm"
               variant="filled"
               color="danger"
+              icon={<IconPlayerStop />}
+              title="Cancel Execution"
+              aria-label="Cancel Execution"
               data-testid="runner-cancel-button"
             >
               Cancel Execution
             </Button>
           </div>
         ) : runnerInfo.status === 'ended' ? (
-          <div className="flex items-center gap-3 flex-shrink-0">
+          <div className="runner-actions flex items-center gap-3 flex-shrink-0">
             <Button
               type="button"
               onClick={runAgain}
               size="sm"
               variant="filled"
               color="secondary"
+              icon={<IconRefresh />}
+              title="Run Again"
+              aria-label="Run Again"
+              data-testid="runner-run-again-button"
             >
               Run Again
             </Button>
@@ -394,6 +389,10 @@ export default function RunnerResults({ collection }) {
               size="sm"
               variant="filled"
               color="secondary"
+              icon={<IconReload />}
+              title="Reset"
+              aria-label="Reset"
+              data-testid="runner-reset-button"
             >
               Reset
             </Button>
