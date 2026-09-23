@@ -625,6 +625,25 @@ describe('getVisibleSidebarUidsInOrder', () => {
       .toEqual(['colA', 'folderA', 'reqA1']);
   });
 
+  it('while searching, matches requests by url as well as by name', () => {
+    const sidebarEntries = [
+      {
+        kind: 'loaded',
+        collection: buildCollectionA({
+          collection: {
+            items: [
+              buildFolderA(),
+              { uid: 'reqRoot', type: 'http-request', request: { url: '{{baseUrl}}/orders' }, name: 'Root', seq: 2, pathname: '/colA/Root.bru' }
+            ]
+          }
+        })
+      }
+    ];
+
+    expect(getVisibleSidebarUidsInOrder({ sidebarEntries, searchText: 'orders' }))
+      .toEqual(['colA', 'reqRoot']);
+  });
+
   const buildRequestWithExample = (overrides = {}) => ({
     uid: 'reqRoot',
     type: 'http-request',

@@ -2,8 +2,15 @@ import { flattenItems, isItemARequest } from './index';
 import filter from 'lodash/filter';
 import find from 'lodash/find';
 
-export const doesRequestMatchSearchText = (request, searchText = '') => {
-  return request?.name?.toLowerCase().includes(searchText.toLowerCase());
+export const doesRequestMatchSearchText = (item, searchText = '') => {
+  const searchQuery = searchText.toLowerCase();
+  if (item?.name?.toLowerCase().includes(searchQuery)) {
+    return true;
+  }
+
+  // The draft url wins over the saved one, mirroring how the request pane renders the in-edit url
+  const url = item?.draft?.request?.url ?? item?.request?.url;
+  return Boolean(url?.toLowerCase().includes(searchQuery));
 };
 
 export const doesFolderHaveItemsMatchSearchText = (item, searchText = '') => {
