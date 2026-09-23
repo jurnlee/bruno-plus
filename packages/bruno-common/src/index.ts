@@ -3,7 +3,16 @@ export { default as interpolate, interpolateObject } from './interpolate';
 export { parseDataFile } from './data-file';
 export type { DataFileFormat, DataFileError, ParsedDataFile } from './data-file';
 export { percentageToZoomLevel } from './zoom';
-export { default as isRequestTagsIncluded } from './tags';
+export {
+  default as isRequestTagsIncluded,
+  normalizeTags,
+  getFolderTags,
+  getOwnTags,
+  getInheritedTagsFromTreePath,
+  getInheritedTagSourcesFromTreePath,
+  getEffectiveTags
+} from './tags';
+export type { TaggedTreeNode, InheritedTagSource } from './tags';
 export { transformExampleStatusInCollection } from './example-status';
 export { sortByNameThenSequence, resolveCollectionVersion } from './collection';
 export { normalizeOpenApiSyncConfigs } from './openapi-sync';
