@@ -19,6 +19,7 @@ import {
   IconInfoCircle,
   IconTerminal2,
   IconAppWindow,
+  IconFileCode,
   IconEyeOff
 } from '@tabler/icons';
 import { useSelector, useDispatch, useStore } from 'react-redux';
@@ -32,6 +33,7 @@ import { copyRequest, setFocusedSidebarPath, insertTaskIntoQueue } from 'provide
 import NewRequest from 'components/Sidebar/NewRequest';
 import NewFolder from 'components/Sidebar/NewFolder';
 import NewApp from 'components/Sidebar/NewApp';
+import NewJsScript from 'components/Sidebar/NewJsScript';
 import RenameCollectionItem from '../RenameCollectionItem';
 import DeleteCollectionItems from '../DeleteCollectionItems';
 import IgnoreCollectionItem from '../IgnoreCollectionItem';
@@ -129,6 +131,7 @@ const CollectionItemRow = ({
   const [newRequestModalOpen, setNewRequestModalOpen] = useState(false);
   const [newFolderModalOpen, setNewFolderModalOpen] = useState(false);
   const [newAppModalOpen, setNewAppModalOpen] = useState(false);
+  const [newJsScriptModalOpen, setNewJsScriptModalOpen] = useState(false);
   const [runCollectionModalOpen, setRunCollectionModalOpen] = useState(false);
   const [itemInfoModalOpen, setItemInfoModalOpen] = useState(false);
   const examplesExpanded = !isCollectionItemCollapsed(item);
@@ -329,7 +332,8 @@ const CollectionItemRow = ({
     setTimeout(scrollToTheActiveTab, 50);
     const isRequest = isItemARequest(item);
     const isApp = item.type === 'app';
-    if (isRequest || isApp) {
+    const isJsScript = item.type === 'js';
+    if (isRequest || isApp || isJsScript) {
       if (isTabForItemPresent) {
         dispatch(
           focusTab({
@@ -434,6 +438,12 @@ const CollectionItemRow = ({
           leftSection: IconAppWindow,
           label: 'New App',
           onClick: () => setNewAppModalOpen(true)
+        },
+        {
+          id: 'new-js-script',
+          leftSection: IconFileCode,
+          label: 'New JS Script',
+          onClick: () => setNewJsScriptModalOpen(true)
         },
         {
           id: 'run',
@@ -728,6 +738,9 @@ const CollectionItemRow = ({
       )}
       {newAppModalOpen && (
         <NewApp item={item} collectionUid={collectionUid} onClose={() => setNewAppModalOpen(false)} />
+      )}
+      {newJsScriptModalOpen && (
+        <NewJsScript item={item} collectionUid={collectionUid} onClose={() => setNewJsScriptModalOpen(false)} />
       )}
       {runCollectionModalOpen && (
         <RunCollectionItem collectionUid={collectionUid} item={item} onClose={() => setRunCollectionModalOpen(false)} />

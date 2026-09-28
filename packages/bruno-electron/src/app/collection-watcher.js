@@ -93,6 +93,41 @@ const isCollectionRootFile = (pathname, collectionPath) => {
   return basename === 'collection.bru' || basename === 'opencollection.yml';
 };
 
+const isJsFile = (pathname) => {
+  return /\.js$/i.test(path.basename(pathname));
+};
+
+// Standalone JS files ride the same tree event as .bru files: the renderer's
+// collectionAddFileEvent/collectionChangeFileEvent reducers key items off
+// `data.uid`, hydrated here exactly like requests via getRequestUid(pathname).
+const buildJsFileEvent = (win, pathname, collectionUid, event) => {
+  try {
+    const content = fs.readFileSync(pathname, 'utf8');
+    const fileStats = fs.statSync(pathname);
+
+    const file = {
+      meta: {
+        collectionUid,
+        pathname,
+        name: path.basename(pathname)
+      },
+      data: {
+        type: 'js',
+        name: path.basename(pathname).replace(/\.js$/i, ''),
+        raw: content
+      },
+      partial: false,
+      loading: false,
+      size: sizeInMB(fileStats?.size)
+    };
+
+    hydrateRequestWithUuid(file.data, pathname);
+    win.webContents.send('main:collection-tree-updated', event, file);
+  } catch (err) {
+    console.error(`Error processing js file: ${pathname}`, err);
+  }
+};
+
 const envHasSecrets = (environment = {}) => {
   const secrets = _.filter(environment.variables, (v) => v.secret);
 
@@ -323,6 +358,10 @@ const add = async (win, pathname, collectionUid, collectionPath, useWorkerThread
       console.error(err);
       return;
     }
+  }
+
+  if (isJsFile(pathname)) {
+    return buildJsFileEvent(win, pathname, collectionUid, 'addFile');
   }
 
   const format = getCollectionFormat(collectionPath);
@@ -571,6 +610,10 @@ const change = async (win, pathname, collectionUid, collectionPath) => {
     }
   }
 
+  if (isJsFile(pathname)) {
+    return buildJsFileEvent(win, pathname, collectionUid, 'change');
+  }
+
   const format = getCollectionFormat(collectionPath);
   if (hasRequestExtension(pathname, format)) {
     const file = {
@@ -636,6 +679,16 @@ const unlink = (win, pathname, collectionUid, collectionPath) => {
     } catch (error) {
       console.error(`Error getting collection format for: ${collectionPath}`, error);
       return;
+    }
+    if (isJsFile(pathname)) {
+      const file = {
+        meta: {
+          collectionUid,
+          pathname,
+          name: path.basename(pathname)
+        }
+      };
+      return win.webContents.send('main:collection-tree-updated', 'unlink', file);
     }
     if (hasRequestExtension(pathname, format)) {
       const basename = path.basename(pathname);

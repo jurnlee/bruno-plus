@@ -1910,6 +1910,48 @@ export const newApp = (params) => (dispatch, getState) => {
   });
 };
 
+const NEW_JS_SCRIPT_TEMPLATE = '// New JS Script\n';
+
+export const newJsScript = (params) => (dispatch, getState) => {
+  const { scriptName, filename, collectionUid, itemUid } = params;
+
+  return new Promise((resolve, reject) => {
+    const state = getState();
+    const collection = findCollectionByUid(state.collections.collections, collectionUid);
+    if (!collection) {
+      return reject(new Error('Collection not found'));
+    }
+
+    const selectedItem = itemUid ? findItemInCollection(collection, itemUid) : null;
+    let parent = collection;
+    if (selectedItem) {
+      parent = isItemAFolder(selectedItem)
+        ? selectedItem
+        : (findParentItemInCollection(collection, selectedItem.uid) || collection);
+    }
+
+    const fullName = path.join(parent.pathname, filename);
+    const { ipcRenderer } = window;
+
+    ipcRenderer
+      .invoke('renderer:new-js-script', fullName, NEW_JS_SCRIPT_TEMPLATE)
+      .then((result) => {
+        dispatch(
+          insertTaskIntoQueue({
+            uid: uuid(),
+            type: 'OPEN_REQUEST',
+            collectionUid,
+            // Use the path the handler actually wrote (it silently suffixes on a
+            // filename collision), not the optimistic pre-suffix path.
+            itemPathname: result?.pathname || fullName
+          })
+        );
+        resolve();
+      })
+      .catch(reject);
+  });
+};
+
 export const loadGrpcMethodsFromReflection = (item, collectionUid, url) => async (dispatch, getState) => {
   const state = getState();
   const collection = findCollectionByUid(state.collections.collections, collectionUid);

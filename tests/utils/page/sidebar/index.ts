@@ -81,6 +81,10 @@ export const buildSidebarLocators = (page: Page) => {
       nameInput: (): Locator => page.getByTestId('new-folder-input')
     },
 
+    newJsScriptModal: {
+      nameInput: (): Locator => page.getByTestId('new-js-script-name-input')
+    },
+
     cloneCollectionModal: {
       nameInput: (): Locator => page.locator('#collection-name'),
       locationInput: (): Locator => page.locator('#collection-location'),

@@ -627,7 +627,7 @@ const RequestTabPanel = () => {
     }
   };
 
-  if (collection.fileMode) {
+  if (collection.fileMode || item.type === 'js') {
     return (
       <ScopedPersistenceProvider scope={focusedTab.uid}>
         <StyledWrapper className="flex flex-col flex-grow relative p-4 file-mode overflow-hidden">

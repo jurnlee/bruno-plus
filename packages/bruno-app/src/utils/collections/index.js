@@ -925,6 +925,9 @@ export const getItemTypeLabel = (item) => {
   if (isItemAFolder(item)) {
     return 'Folder';
   }
+  if (item?.type === 'js') {
+    return 'JS Script';
+  }
   return item?.type === 'app' ? 'App' : 'Request';
 };
 

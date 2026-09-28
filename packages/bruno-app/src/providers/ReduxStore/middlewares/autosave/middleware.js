@@ -152,8 +152,9 @@ const saveExistingDrafts = (dispatch, getState, interval) => {
     const allItems = flattenItems(collection.items);
     allItems.forEach((item) => {
       if (item.draft) {
-        // File mode (requests with raw draft content, including empty content)
-        if (collection.fileMode && typeof item.draft.raw === 'string') {
+        // File mode (requests with raw draft content, including empty content);
+        // standalone JS files always save raw content.
+        if ((collection.fileMode || item.type === 'js') && typeof item.draft.raw === 'string') {
           // Skip auto-save for transient requests
           if (isItemTransientRequest(item)) {
             return;

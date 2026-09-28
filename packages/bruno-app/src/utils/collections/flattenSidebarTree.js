@@ -11,6 +11,7 @@ const groupCollectionItems = (collectionItems) => {
   const folders = [];
   const apps = [];
   const requests = [];
+  const jsFiles = [];
 
   const sortBySeq = (items) => [...items].sort((a, b) => a.seq - b.seq);
 
@@ -23,13 +24,16 @@ const groupCollectionItems = (collectionItems) => {
       apps.push(item);
     } else if (isItemARequest(item)) {
       requests.push(item);
+    } else if (item.type === 'js') {
+      jsFiles.push(item);
     }
   }
 
   return {
     folders: sortByNameThenSequence(folders),
     apps: sortBySeq(apps),
-    requests: sortBySeq(requests)
+    requests: sortBySeq(requests),
+    jsFiles: sortByNameThenSequence(jsFiles)
   };
 };
 
@@ -54,7 +58,7 @@ const walkChildren = (
 
   let visibleChildCount = 0;
 
-  const { folders, apps, requests } = groupCollectionItems(collectionItems);
+  const { folders, apps, requests, jsFiles } = groupCollectionItems(collectionItems);
 
   for (const folder of folders) {
     if (hasSearch && !doesFolderHaveItemsMatchSearchText(folder, searchText)) {
@@ -163,6 +167,28 @@ const walkChildren = (
           exampleUid: example.uid || null
         });
       });
+    }
+  }
+
+  // Like apps, standalone JS files are hidden while searching (they carry no
+  // request metadata, so search matches on them are out of scope).
+  if (!hasSearch) {
+    for (const jsFile of jsFiles) {
+      visibleChildCount++;
+
+      appendRow({
+        id: `${collectionUid}:${jsFile.uid}`,
+        kind: 'js',
+        depth,
+        collectionUid,
+        collectionPathname,
+        collectionId,
+        parentName,
+        itemUid: jsFile.uid,
+        sortName: jsFile.name || null
+      });
+
+      addItemToIndex(jsFile.uid, jsFile);
     }
   }
 
@@ -324,7 +350,7 @@ export const buildIndexes = (rows = []) => {
     }
 
     if (
-      ['folder', 'app', 'request'].includes(row.kind)
+      ['folder', 'app', 'request', 'js'].includes(row.kind)
       && row.itemUid
     ) {
       rowIndexByItemUid.set(row.itemUid, index);

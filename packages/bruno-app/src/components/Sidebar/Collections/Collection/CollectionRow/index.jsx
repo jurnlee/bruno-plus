@@ -22,7 +22,8 @@ import {
   IconBook,
   IconServer,
   IconFileArrowRight,
-  IconAppWindow
+  IconAppWindow,
+  IconFileCode
 } from '@tabler/icons';
 import OpenAPISyncIcon from 'components/Icons/OpenAPISync';
 import { toggleCollection, collapseFullCollection, clearSidebarSelection } from 'providers/ReduxStore/slices/collections';
@@ -34,6 +35,7 @@ import toast from 'react-hot-toast';
 import NewRequest from 'components/Sidebar/NewRequest';
 import NewFolder from 'components/Sidebar/NewFolder';
 import NewApp from 'components/Sidebar/NewApp';
+import NewJsScript from 'components/Sidebar/NewJsScript';
 import RemoveCollections from '../RemoveCollections';
 import MoveToWorkspace from '../MoveToWorkspace';
 import { isPathExternalToBasePath } from 'utils/common/path';
@@ -65,6 +67,7 @@ const CollectionRow = ({ collection, searchText, openBulkMenu, children, isColle
   const [showNewFolderModal, setShowNewFolderModal] = useState(false);
   const [showNewRequestModal, setShowNewRequestModal] = useState(false);
   const [showNewAppModal, setShowNewAppModal] = useState(false);
+  const [showNewJsScriptModal, setShowNewJsScriptModal] = useState(false);
   const [showRenameCollectionModal, setShowRenameCollectionModal] = useState(false);
   const [showCloneCollectionModalOpen, setShowCloneCollectionModalOpen] = useState(false);
   const [showShareCollectionModal, setShowShareCollectionModal] = useState(false);
@@ -414,6 +417,15 @@ const CollectionRow = ({ collection, searchText, openBulkMenu, children, isColle
       }
     },
     {
+      id: 'new-js-script',
+      leftSection: IconFileCode,
+      label: 'New JS Script',
+      onClick: () => {
+        ensureCollectionIsMounted();
+        setShowNewJsScriptModal(true);
+      }
+    },
+    {
       id: 'run',
       leftSection: IconPlayerPlay,
       label: 'Run',
@@ -539,6 +551,7 @@ const CollectionRow = ({ collection, searchText, openBulkMenu, children, isColle
       {showNewRequestModal && <NewRequest collectionUid={collection.uid} onClose={() => setShowNewRequestModal(false)} />}
       {showNewFolderModal && <NewFolder collectionUid={collection.uid} onClose={() => setShowNewFolderModal(false)} />}
       {showNewAppModal && <NewApp collectionUid={collection.uid} onClose={() => setShowNewAppModal(false)} />}
+      {showNewJsScriptModal && <NewJsScript collectionUid={collection.uid} onClose={() => setShowNewJsScriptModal(false)} />}
       {showRenameCollectionModal && (
         <RenameCollection collectionUid={collection.uid} onClose={() => setShowRenameCollectionModal(false)} />
       )}

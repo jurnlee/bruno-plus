@@ -14,6 +14,7 @@ const resolveRowObject = ({ row, itemsByUid, collectionsByUid, ghostsByPath }) =
     case 'folder':
     case 'app':
     case 'request':
+    case 'js':
     case 'example':
       // example rows resolve to their parent request.
       return itemsByUid.get(row.itemUid);
@@ -43,7 +44,8 @@ const renderRow = (props) => {
     }
     case 'folder':
     case 'app':
-    case 'request': {
+    case 'request':
+    case 'js': {
       if (!resolved) return null;
       return (
         <CollectionItemRow

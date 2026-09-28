@@ -3648,6 +3648,27 @@ const createFolderViaModal = async (page: Page, collectionName: string, folderNa
   });
 };
 
+const openCollectionContextMenuNewJsScript = async (page: Page, parentName: string, { inFolder = false } = {}) => {
+  const { dropdown, sidebar } = buildCommonLocators(page);
+  if (inFolder) {
+    await openItemActionsMenu(page, parentName);
+  } else {
+    await openCollectionActionsMenu(page, parentName);
+  }
+  await dropdown.item('New JS Script').click();
+  await sidebar.newJsScriptModal.nameInput().waitFor({ state: 'visible' });
+};
+
+const createJsScriptViaModal = async (page: Page, parentName: string, name: string, { inFolder = false } = {}) => {
+  await test.step(`Create js script "${name}" via modal in "${parentName}"`, async () => {
+    const { modal, sidebar } = buildCommonLocators(page);
+    await openCollectionContextMenuNewJsScript(page, parentName, { inFolder });
+    await sidebar.newJsScriptModal.nameInput().fill(name);
+    await modal.button('Create').click();
+    await modal.any().waitFor({ state: 'hidden' });
+  });
+};
+
 const openCloneCollectionModal = async (page: Page, collectionName: string) => {
   const { dropdown, modal } = buildCommonLocators(page);
   await openCollectionActionsMenu(page, collectionName);
@@ -3898,6 +3919,8 @@ export {
   createRequestWithEditedFilename,
   openNewFolderModal,
   createFolderViaModal,
+  openCollectionContextMenuNewJsScript,
+  createJsScriptViaModal,
   openCloneCollectionModal,
   chooseCloneLocation,
   setTextBody,

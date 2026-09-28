@@ -570,6 +570,31 @@ const registerRendererEventHandlers = (mainWindow, watcher) => {
     }
   });
 
+  // new js script
+  ipcMain.handle('renderer:new-js-script', async (event, pathname, content) => {
+    try {
+      validatePathIsInsideCollection(pathname);
+
+      // For the actual filename part, we want to be strict
+      const baseFilename = path.basename(pathname).replace(/\.js$/i, '');
+      if (!validateName(baseFilename)) {
+        throw new Error(`${baseFilename} is not a valid filename`);
+      }
+
+      // Resolve filename collisions silently and atomically (race-safe).
+      // Returns the path actually created so the renderer can target the right tab.
+      const { pathname: createdPathname, filename } = await writeFileUnique(
+        path.dirname(pathname),
+        baseFilename,
+        'js',
+        content
+      );
+      return { pathname: createdPathname, filename };
+    } catch (error) {
+      return Promise.reject(error);
+    }
+  });
+
   // save request
   ipcMain.handle('renderer:save-request', async (event, pathname, request, format) => {
     try {
