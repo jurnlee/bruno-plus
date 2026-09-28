@@ -161,7 +161,7 @@ const executeQuickJsVm = ({ script: externalScript, context: externalContext, sc
   }
 };
 
-const executeQuickJsVmAsync = async ({ script: externalScript, context: externalContext, collectionPath, scriptPath }) => {
+const executeQuickJsVmAsync = async ({ script: externalScript, context: externalContext, collectionPath, scriptPath, scriptingConfig }) => {
   if (!externalScript?.length || typeof externalScript !== 'string') {
     return externalScript;
   }
@@ -189,7 +189,7 @@ const executeQuickJsVmAsync = async ({ script: externalScript, context: external
     bru?.grpc && addBrunoGrpcShimToContext(vm, bru.grpc);
     req && addBrunoRequestShimToContext(vm, req);
     res && addBrunoResponseShimToContext(vm, res);
-    addRequireShimToContext(vm, collectionPath);
+    addRequireShimToContext(vm, collectionPath, scriptingConfig);
     addPathShimToContext(vm);
 
     await addLibraryShimsToContext(vm);

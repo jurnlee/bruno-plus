@@ -136,6 +136,7 @@ class GrpcScriptRuntime {
           script,
           context,
           collectionPath,
+          scriptingConfig,
           scriptPath
         });
       }

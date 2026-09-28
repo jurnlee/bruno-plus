@@ -127,6 +127,7 @@ class TestRuntime {
           script: testsFile,
           context: context,
           collectionPath,
+          scriptingConfig,
           scriptPath
         });
       } catch (error) {

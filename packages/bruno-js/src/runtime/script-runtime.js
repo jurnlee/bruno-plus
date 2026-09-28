@@ -153,6 +153,7 @@ class ScriptRuntime {
         script: script,
         context: context,
         collectionPath,
+        scriptingConfig,
         scriptPath
       });
     } catch (error) {
@@ -295,6 +296,7 @@ class ScriptRuntime {
         script: script,
         context: context,
         collectionPath,
+        scriptingConfig,
         scriptPath
       });
     } catch (error) {

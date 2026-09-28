@@ -8,6 +8,8 @@ collections:
     path: "collections/collectionA"
   - name: "Collection B"
     path: "collections/collectionB"
+  - name: "Collection C"
+    path: "collections/collectionC"
 
 specs:
 

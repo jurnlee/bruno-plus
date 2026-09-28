@@ -1,0 +1,22 @@
+meta {
+  name: safe-mode
+  type: http
+  seq: 1
+}
+
+get {
+  url: http://localhost:8081/ping
+  body: none
+  auth: none
+}
+
+script:pre-request {
+  const { formatDate } = require('../../shared-scripts/format-date');
+  bru.setVar('formattedDate', formatDate('2024-03-15T10:30:00Z'));
+}
+
+tests {
+  test('Collection C loads a dependency-free shared module via additionalContextRoots', function() {
+    expect(bru.getVar('formattedDate')).to.eql('2024-03-15');
+  });
+}
