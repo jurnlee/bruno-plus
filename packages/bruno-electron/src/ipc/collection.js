@@ -1156,6 +1156,13 @@ const registerRendererEventHandlers = (mainWindow, watcher) => {
       }
 
       const format = getCollectionFormat(collectionPathname);
+
+      // Standalone js files carry no meta name block — their display name is the
+      // filename itself, which the filename rename channel below takes care of.
+      if (path.extname(itemPath).toLowerCase() === '.js') {
+        return;
+      }
+
       if (!hasRequestExtension(itemPath, format)) {
         throw new Error(`path: ${itemPath} is not a valid request file`);
       }
@@ -1184,11 +1191,15 @@ const registerRendererEventHandlers = (mainWindow, watcher) => {
       }
 
       const format = getCollectionFormat(collectionPathname);
+      const isJsFile = path.extname(oldPath).toLowerCase() === '.js';
 
       if (!validateName(newFilename)) {
         throw new Error(`${newFilename} is not a valid filename`);
       }
-      const derivedFilename = isDirectory(oldPath) ? newFilename : `${newFilename}.${format}`;
+      let derivedFilename = newFilename;
+      if (!isDirectory(oldPath)) {
+        derivedFilename = isJsFile ? `${newFilename}.js` : `${newFilename}.${format}`;
+      }
       newPath = getUniqueRenamePath(oldPath, path.join(path.dirname(oldPath), derivedFilename));
 
       if (isDirectory(oldPath)) {
@@ -1239,6 +1250,13 @@ const registerRendererEventHandlers = (mainWindow, watcher) => {
           await fs.renameSync(oldPath, newPath);
         }
 
+        return newPath;
+      }
+
+      // A standalone js file carries no meta name block, so renaming it is a plain move.
+      if (isJsFile) {
+        moveRequestUid(oldPath, newPath);
+        await fs.promises.rename(oldPath, newPath);
         return newPath;
       }
 
@@ -1314,7 +1332,7 @@ const registerRendererEventHandlers = (mainWindow, watcher) => {
         }
 
         fs.rmSync(pathname, { recursive: true, force: true });
-      } else if (['http-request', 'graphql-request', 'grpc-request', 'ws-request'].includes(type)) {
+      } else if (['http-request', 'graphql-request', 'grpc-request', 'ws-request', 'js'].includes(type)) {
         if (!fs.existsSync(pathname)) {
           return Promise.reject(new Error('The file does not exist'));
         }

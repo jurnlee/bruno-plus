@@ -890,6 +890,8 @@ export const renameItem
           let newPath = '';
           if (item.type === 'folder') {
             newPath = path.join(dirname, trim(newFilename));
+          } else if (item.type === 'js') {
+            newPath = path.join(dirname, `${trim(newFilename)}.js`);
           } else {
             const filename = resolveRequestFilename(newFilename, collection.format);
             newPath = path.join(dirname, filename);

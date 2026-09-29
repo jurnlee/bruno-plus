@@ -3554,8 +3554,8 @@ const pasteIntoFolder = async (page: Page, folderName: string) => {
   });
 };
 
-type ItemType = 'request' | 'folder';
-const renameModalTitle = (type: ItemType) => (type === 'folder' ? 'Rename Folder' : 'Rename Request');
+type ItemType = 'request' | 'folder' | 'js';
+const renameModalTitle = (type: ItemType) => (type === 'folder' ? 'Rename Folder' : type === 'js' ? 'Rename JS Script' : 'Rename Request');
 
 const openRenameModal = async (page: Page, name: string, type: ItemType = 'request') => {
   const { dropdown, modal } = buildCommonLocators(page);
