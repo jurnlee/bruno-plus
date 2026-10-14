@@ -46,7 +46,6 @@ import { isTabForItemActive } from 'src/selectors/tab';
 import RenameCollection from '../RenameCollection';
 import StyledWrapper from './StyledWrapper';
 import CloneCollection from '../CloneCollection';
-import { scrollToTheActiveTab } from 'utils/tabs';
 import ShareCollection from 'components/ShareCollection/index';
 import GenerateDocumentation from '../GenerateDocumentation';
 import { getRevealInFolderLabel } from 'utils/common/platform';
@@ -55,6 +54,7 @@ import ActionIcon from 'ui/ActionIcon';
 import MenuDropdown from 'ui/MenuDropdown';
 import { useSidebarAccordion } from 'components/Sidebar/SidebarAccordionContext';
 import useKeybinding from 'hooks/useKeybinding';
+import useKeybindingDisplayText from 'hooks/useKeybindingDisplayText';
 import { useBetaFeature, BETA_FEATURES } from 'utils/beta-features';
 import StatusBadge from 'ui/StatusBadge';
 import CreateMockServerModal from 'components/MockServer/CreateMockServerModal';
@@ -153,8 +153,6 @@ const CollectionRow = ({ collection, searchText, openBulkMenu, children, isColle
     // Check if the click came from the chevron icon
     const isChevronClick = event.target.closest('svg')?.classList.contains('chevron-icon');
 
-    setTimeout(scrollToTheActiveTab, 50);
-
     ensureCollectionIsMounted();
 
     if (collection.collapsed) {
@@ -242,6 +240,8 @@ const CollectionRow = ({ collection, searchText, openBulkMenu, children, isColle
       });
   };
 
+  const getKeybindingDisplayText = useKeybindingDisplayText();
+
   // Sidebar shortcuts — only active when this collection has keyboard focus
   useKeybinding('cloneItem', () => {
     setShowCloneCollectionModalOpen(true);
@@ -259,6 +259,7 @@ const CollectionRow = ({ collection, searchText, openBulkMenu, children, isColle
   }, { enabled: isKeyboardFocused, deps: [isKeyboardFocused] });
 
   useKeybinding('newRequest', () => {
+    ensureCollectionIsMounted();
     setShowNewRequestModal(true);
     return false;
   }, { enabled: isKeyboardFocused, deps: [isKeyboardFocused] });
@@ -370,12 +371,6 @@ const CollectionRow = ({ collection, searchText, openBulkMenu, children, isColle
   drag(drop(collectionRef));
   dragPreview(getEmptyImage(), { captureDraggingState: true });
 
-  if (searchText && searchText.length) {
-    if (!doesCollectionHaveItemsMatchingSearchText(collection, searchText)) {
-      return null;
-    }
-  }
-
   const collectionRowClassName = classnames(
     'flex py-1 collection-name items-center relative',
     {
@@ -393,6 +388,7 @@ const CollectionRow = ({ collection, searchText, openBulkMenu, children, isColle
       id: 'new-request',
       leftSection: IconFilePlus,
       label: 'New Request',
+      shortcut: getKeybindingDisplayText('newRequest'),
       onClick: () => {
         ensureCollectionIsMounted();
         setShowNewRequestModal(true);
@@ -439,6 +435,7 @@ const CollectionRow = ({ collection, searchText, openBulkMenu, children, isColle
       leftSection: IconCopy,
       label: 'Clone',
       testId: 'clone-collection',
+      shortcut: getKeybindingDisplayText('cloneItem'),
       onClick: () => {
         setShowCloneCollectionModalOpen(true);
       }
@@ -455,6 +452,7 @@ const CollectionRow = ({ collection, searchText, openBulkMenu, children, isColle
             id: 'paste',
             leftSection: IconClipboard,
             label: 'Paste',
+            shortcut: getKeybindingDisplayText('pasteItem'),
             onClick: handlePasteItem
           }
         ]
@@ -463,6 +461,7 @@ const CollectionRow = ({ collection, searchText, openBulkMenu, children, isColle
       id: 'rename',
       leftSection: IconEdit,
       label: 'Rename',
+      shortcut: getKeybindingDisplayText('renameItem'),
       onClick: () => {
         setShowRenameCollectionModal(true);
       }
@@ -518,6 +517,7 @@ const CollectionRow = ({ collection, searchText, openBulkMenu, children, isColle
       id: 'terminal',
       leftSection: IconTerminal2,
       label: 'Open in Terminal',
+      shortcut: getKeybindingDisplayText('openTerminal'),
       onClick: async () => {
         const collectionCwd = collection.pathname;
         await openDevtoolsAndSwitchToTerminal(dispatch, collectionCwd);
@@ -545,6 +545,12 @@ const CollectionRow = ({ collection, searchText, openBulkMenu, children, isColle
       }
     }
   ];
+
+  if (searchText && searchText.length) {
+    if (!doesCollectionHaveItemsMatchingSearchText(collection, searchText)) {
+      return null;
+    }
+  }
 
   return (
     <StyledWrapper className="flex flex-col">

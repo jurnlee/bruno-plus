@@ -10,7 +10,8 @@ const interpolateString = (
     folderVariables = {},
     requestVariables = {},
     globalEnvironmentVariables = {},
-    dataVariables = {}
+    dataVariables = {},
+    onUnresolved
   }
 ) => {
   if (!str || !str.length || typeof str !== 'string') {
@@ -32,7 +33,7 @@ const interpolateString = (
     }
   };
 
-  return interpolate(str, combinedVars);
+  return interpolate(str, combinedVars, { onUnresolved });
 };
 
 module.exports = {
