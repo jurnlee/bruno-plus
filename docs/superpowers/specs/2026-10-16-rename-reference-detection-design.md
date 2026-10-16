@@ -42,11 +42,13 @@ Bruno 集合内脚本可以引用其他请求/脚本文件。用户重命名请�
 
 ## 3. 需求定义
 
-- **一期（检测+提示）**：重命名提交时扫描集合内脚本引用；命中则弹确认框列出引用
-  位置，用户选择"仍要重命名"或取消。
-- **二期（自动改写）**：同一确认框增加"重命名并更新引用"主操作，确认后 rename 并
-  逐处改写引用字面量。
-- **交互模式：每次确认。** 不做静默自动改写；每序列出引用位置由用户逐次决定。
+- **引用列表内嵌在重命名对话框中**：打开对话框时即扫描并显示引用列表，用户在输入
+  新名称的同时就能看到引用影响（提交时才弹独立确认框的方案已废弃）。
+- **双按钮**：引用列表非空时显示两个提交动作——主按钮"Rename and Update
+  References"（rename + 逐处改写引用），原确认按钮改为"Rename Only"（引用保持
+  原样）；列表为空时保持原 Rename 单按钮。
+- **不做二次确认弹窗、不做静默自动改写**：确认动作由对话框内的按钮选择承载，
+  用户显式表达意图。
 - 覆盖三类引用：`runRequest` 路径、`setNextRequest` 显示名、JS 脚本间 `require`
   相对路径。
 - 入口仅为 `RenameCollectionItem`（请求/文件夹/JS 脚本重命名）。CLI 无 rename 操作，
@@ -74,7 +76,7 @@ Bruno 集合内脚本可以引用其他请求/脚本文件。用户重命名请�
   折叠——运行时查找本身是精确字符串比较）。
 - `runRequest` 参数带/不带 `.bru`/`.yml` 扩展名都识别。
 - **动态参数**（`` bru.runRequest(`folder/${x}`) ``、变量传入）：无法解析目标——不
-  参与改写，但**计数并在确认框提示**"存在 N 处动态引用，无法自动更新"。
+  参与改写，但**计数并在列表底部提示**"存在 N 处动态引用，无法自动更新"。
 - **检测为运行范围的超集**：扫描集合级全量（不做运行范围过滤），宁可多报不漏报。
 
 ### 扫描载体
@@ -113,37 +115,41 @@ oldDisplayName, newDisplayName })`（路径入参均为**相对集合根**的路
 路径解析与运行时一致：`runRequest` 基于集合根、`require` 基于引用方目录、
 `normalizePath` 精确比较、扩展名可选。
 
-### 5.3 确认对话框（bruno-app，新增 `RenameReferenceWarning/` 组件目录）
+### 5.3 引用列表（bruno-app，`RenameCollectionItem` 内嵌）
 
-- 列出命中引用：位置（显示名 + 相对路径）、类型、当前字面量值；有未保存 draft 的
-  引用方标注"含未保存修改"。
-- 按钮：一期 `[仍要重命名] [取消]`；二期增加主按钮 `[重命名并更新引用]`。
-- 动态引用计数提示常驻底部。
+- `RenameCollectionItem` 内新增子组件（独立目录，如
+  `RenameCollectionItem/ReferenceList/`）：渲染引用列表——每条含位置（显示名 +
+  相对路径）、类型（runRequest 路径 / setNextRequest 显示名 / require 相对路径）、
+  当前字面量值；有未保存 draft 的引用方标注"含未保存修改"。
+- 列表当前仅此对话框使用，但组件不依赖对话框形态，便于未来复用。
+- 动态引用计数提示常驻列表底部。
 
 ### 5.4 集成点（改 `RenameCollectionItem`）
 
-`onSubmit` 中：计算显示名/文件名是否变化 → 有变化则调扫描 → 命中则打开对话框并
-暂存 rename payload；确认后走**原封不动的** `renameItem` 流程。`renameItem` thunk
-本身零改动。
+- **打开时扫描**：对话框打开时以 item 的当前文件路径与当前显示名为目标做一次扫描
+  （useMemo 派生，同步、毫秒级），结果渲染引用列表。扫描只与旧名相关，与用户
+  输入无关，输入过程中列表不变。
+- **提交按钮**：列表非空 → 主按钮 "Rename and Update References" + 次按钮
+  "Rename Only"；列表为空 → 原 Rename 单按钮。两个按钮都走**原封不动的**
+  `renameItem` 流程，`renameItem` thunk 本身零改动。
 
 ### 5.5 改写 thunk（bruno-app，仅二期新增）
 
 `rewriteScriptReferences({ collectionUid, edits })`：rename 成功后执行——按新路径
 重算每个字面量 → 更新内存态 → **保存策略**：无 draft 的引用方自动保存；有 draft
-的只改写内存内容、**不自动保存**（避免连带保存用户半成品），由对话框标注 + toast
+的只改写内存内容、**不自动保存**（避免连带保存用户半成品），由引用列表标注 + toast
 提醒用户自行保存。
 
 ## 6. 数据流（二期完整形态）
 
 ```
-提交 rename → 名字有变化？→ 否：直接 renameItem
-                          → 是：扫描 → 无命中 → 直接 renameItem
-                                   → 命中 → 确认框
-        ├─ 取消：结束
-        ├─ 仍要重命名：renameItem（引用不动）
-        └─ 重命名并更新引用：renameItem → 逐条改写（按位置倒序）
-                                        → 无 draft 者自动保存，有 draft 者仅内存改写
-                                        → toast 汇总（更新 N 处 / M 处待手动保存）
+打开对话框 → 扫描（当前文件路径 + 当前显示名）→ 引用列表非空？
+        ├─ 否：原 Rename 单按钮
+        └─ 是：内嵌引用列表 + 双按钮
+提交 → Rename Only（或单按钮）：renameItem（引用不动）
+     → Rename and Update References：renameItem → 逐条改写（按位置倒序）
+                                              → 无 draft 者自动保存，有 draft 者仅内存改写
+                                              → toast 汇总（更新 N 处 / M 处待手动保存）
 ```
 
 ## 7. 边界与错误处理
@@ -151,15 +157,17 @@ oldDisplayName, newDisplayName })`（路径入参均为**相对集合根**的路
 - **动态引用**：永不改写，仅计数提示。
 - **改写失败**（某 item 保存报错）：跳过该项、toast 汇总失败清单，rename 本身不
   回滚。
-- **扫描器异常**：fallback 为跳过检测直接 rename——检测是增强，不得阻塞重命名。
+- **扫描器异常**：列表不渲染（等同无引用），正常 rename——检测是增强，不得阻塞
+  重命名。
 - **文件夹重命名**：命中可能几十处，逐项串行保存即可，无并发优化（YAGNI）。
 - **CLI**：不涉及（CLI 无 rename）；扫描器在 bruno-common，未来 CLI 可复用。
 - **QuickJS shim**：不涉及（`runRequest` 路径解析在 host 侧，不在 sandbox 内）。
 
 ## 8. 性能
 
-- 扫描一次性、同步、仅在提交 rename 时触发：`indexOf` 预筛 + 词法解析，
-  O(集合总脚本文本)。万级请求 × 2KB 脚本为百毫秒内，无需 worker/常驻索引。
+- 扫描一次性、同步、仅在**打开重命名对话框时**触发一次：`indexOf` 预筛 + 词法解析，
+  O(集合总脚本文本)。万级请求 × 2KB 脚本为百毫秒内，无需 worker/常驻索引；
+  对话框打开路径可承受，输入过程零扫描开销。
 - 运行时零开销：不改变 `runRequest`/`setNextRequest` 的运行时解析路径。
 - 改写仅在命中时写盘，走现有 `saveRequest` 链路与既有 watcher 回环处理模式。
 
@@ -167,8 +175,8 @@ oldDisplayName, newDisplayName })`（路径入参均为**相对集合根**的路
 
 | 期 | 内容 |
 |---|---|
-| 一期 | bruno-common 扫描器 + 扫描 util + `RenameReferenceWarning`（只读列表/仍要重命名/取消）+ `RenameCollectionItem` 集成 + 三类字面量检测 + 动态引用计数 |
-| 二期 | 改写 util + "重命名并更新引用"主操作 + `rewriteScriptReferences` thunk + draft 保存策略 |
+| 一期 | bruno-common 扫描器 + 扫描 util + `RenameCollectionItem` 打开时扫描 + 内嵌引用列表（含动态引用计数；此时列表仅警示作用，保持 Rename 单按钮） |
+| 二期 | 改写 util + "Rename and Update References"/"Rename Only" 双按钮 + `rewriteScriptReferences` thunk + draft 保存策略 |
 
 ## 10. 测试策略
 
@@ -176,9 +184,9 @@ oldDisplayName, newDisplayName })`（路径入参均为**相对集合根**的路
   引号、正则字面量不误判、多行字符串、三类 callee 各形态。
 - **扫描 util 单测**（bruno-app jest）：路径匹配（带/不带扩展名、文件夹前缀、
   `./` 相对形式）、显示名精确匹配、动态计数、draft 载体覆盖。
-- **e2e**：一期——rename 命中弹框 → 仍要重命名 → 引用保持原样（后续运行报错的
-  行为不变）；无命中时无弹框直通。二期——重命名并更新 → 断言脚本文本已改写且
-  落盘。
+- **e2e**：一期——打开 rename 对话框 → 有引用时列表可见、无引用时无列表；
+  Rename 后引用保持原样（后续运行报错的行为不变）。二期——"Rename and Update
+  References" → 断言脚本文本已改写且落盘；"Rename Only" → 引用保持原样。
 - **手动**：有 draft 引用方的"仅内存改写 + 提醒手动保存"场景。
 
 ## 11. 范围外说明
