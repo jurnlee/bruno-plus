@@ -111,16 +111,37 @@ Bruno 集合内脚本可以引用其他请求/脚本文件。用户重命名请�
 oldDisplayName, newDisplayName })`（路径入参均为**相对集合根**的路径，扩展名可选）
 → 遍历树收集脚本载体 → 逐段调扫描器 → 按运行时
 规则解析每个字面量的目标 → 命中产出
-`{ itemUid, itemName, carrier, kind, arg, editRange }`；动态调用单独计数。
+`{ itemUid, itemName, carrier, kind, arg, editRange, line, lineText }`——`line`
+（1 起始）与 `lineText`（trim 后的行文本）由扫描器返回的 `start` 偏移在 util 中
+推导，扫描器保持通用；动态调用单独计数。
 路径解析与运行时一致：`runRequest` 基于集合根、`require` 基于引用方目录、
 `normalizePath` 精确比较、扩展名可选。
 
 ### 5.3 引用列表（bruno-app，`RenameCollectionItem` 内嵌）
 
 - `RenameCollectionItem` 内新增子组件（独立目录，如
-  `RenameCollectionItem/ReferenceList/`）：渲染引用列表——每条含位置（显示名 +
-  相对路径）、类型（runRequest 路径 / setNextRequest 显示名 / require 相对路径）、
-  当前字面量值；有未保存 draft 的引用方标注"含未保存修改"。
+  `RenameCollectionItem/ReferenceList/`）。列表**按文件分组**，文件行下每条命中
+  一行，展示**载体标签 + 行号 + 具体行内容**（等宽字体、trim、超长截断加省略号），
+  让用户直接看到被引用的代码：
+
+  ```
+  此请求被 3 处脚本引用：
+
+    login  (folder/auth/login)
+      Pre Request · L2   bru.runRequest("auth/login")
+      Tests · L7         bru.setNextRequest("login")
+    smoke  (folder/smoke)
+      Pre Request · L1   bru.runRequest("auth/login")
+
+    ⚠ 存在 1 处动态引用，无法自动更新
+  ```
+
+- **行号基准是脚本编辑器视图**（扫描对象是解析后的脚本文本），与 App 内脚本编辑器
+  一致；对 `.bru` 文件直接开文本会对不上（block 前还有 meta 等内容），行内容自
+  解释、行号仅辅助。
+- **载体标签**（Pre Request / Post Response / Tests / Folder Script 等）保留——
+  指引用户去请求界面的哪个 tab 找这行代码。
+- 有未保存 draft 的引用方在文件行标注"含未保存修改"。
 - 列表当前仅此对话框使用，但组件不依赖对话框形态，便于未来复用。
 - 动态引用计数提示常驻列表底部。
 
@@ -195,4 +216,5 @@ oldDisplayName, newDisplayName })`（路径入参均为**相对集合根**的路
   无法保证引用一致性。
 - 不引入引用倒排索引/启动时全量扫描（YAGNI，rename 低频且全量扫描已足够快）。
 - 不改变 `setNextRequest` 的显示名匹配语义（含同名请求歧义——运行时既有行为）。
+- 引用行点击跳转到对应请求/脚本 tab 的导航增强不在本次范围（可作为后续迭代）。
 - 无 DSL/on-disk 格式变更（扫描与改写均作用于已解析的内存脚本文本）。
