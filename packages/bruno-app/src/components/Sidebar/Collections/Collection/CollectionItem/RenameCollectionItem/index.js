@@ -7,11 +7,10 @@ import { isItemAFolder } from 'utils/tabs';
 import { getItemTypeLabel } from 'utils/collections';
 import { renameItem, saveRequest, closeTabs } from 'providers/ReduxStore/slices/collections/actions';
 import path from 'utils/common/path';
-import { IconArrowBackUp, IconEdit, IconCaretDown } from '@tabler/icons';
+import { IconCaretDown } from '@tabler/icons';
 import { sanitizeName, validateName, validateNameError } from 'utils/common/regex';
 import toast from 'react-hot-toast';
 import Help from 'components/Help';
-import PathDisplay from 'components/PathDisplay';
 import Portal from 'components/Portal';
 import Dropdown from 'components/Dropdown';
 import StyledWrapper from './StyledWrapper';
@@ -22,12 +21,11 @@ const RenameCollectionItem = ({ collectionUid, item, onClose }) => {
   const collection = useSelector((state) => state.collections.collections?.find((c) => c.uid === collectionUid));
   const isFolder = isItemAFolder(item);
   const inputRef = useRef();
-  const [isEditing, toggleEditing] = useState(false);
   const itemName = item?.name;
   const itemType = item?.type;
   const itemTypeLabel = getItemTypeLabel(item);
   const itemFilename = item?.filename ? path.parse(item?.filename).name : '';
-  const [showFilesystemName, toggleShowFilesystemName] = useState(false);
+  const [showFilesystemName, toggleShowFilesystemName] = useState(true);
 
   const dropdownTippyRef = useRef();
   const onDropdownCreate = (ref) => (dropdownTippyRef.current = ref);
@@ -129,7 +127,12 @@ const RenameCollectionItem = ({ collectionUid, item, onClose }) => {
                 spellCheck="false"
                 onChange={(e) => {
                   formik.setFieldValue('name', e.target.value);
-                  !isEditing && formik.setFieldValue('filename', sanitizeName(e.target.value));
+                  // Follow the item name until the user types a custom filesystem name
+                  const filenameFollowsItemName = !formik.values.filename
+                    || formik.values.filename === sanitizeName(formik.values.name);
+                  if (filenameFollowsItemName) {
+                    formik.setFieldValue('filename', sanitizeName(e.target.value));
+                  }
                 }}
                 value={formik.values.name || ''}
               />
@@ -138,67 +141,41 @@ const RenameCollectionItem = ({ collectionUid, item, onClose }) => {
 
             {showFilesystemName && (
               <div className="mt-4">
-                <div className="flex items-center justify-between">
-                  <label htmlFor="filename" className="flex items-center font-medium">
-                    {isFolder ? 'Folder' : 'File'} Name <small className="font-normal text-muted ml-1">(on filesystem)</small>
-                    { isFolder ? (
-                      <Help width="300">
-                        <p>
-                          You can choose to save the folder as a different name on your file system versus what is displayed in the app.
-                        </p>
-                      </Help>
-                    ) : (
-                      <Help width="300">
-                        <p>
-                          Bruno saves each request as a file in your collection's folder.
-                        </p>
-                        <p className="mt-2">
-                          You can choose a file name different from your request's name or one compatible with filesystem rules.
-                        </p>
-                      </Help>
-                    )}
-                  </label>
-                  {isEditing ? (
-                    <IconArrowBackUp
-                      className="cursor-pointer opacity-50 hover:opacity-80"
-                      size={16}
-                      strokeWidth={1.5}
-                      onClick={() => toggleEditing(false)}
-                    />
+                <label htmlFor="filename" className="flex items-center font-medium">
+                  {isFolder ? 'Folder' : 'File'} Name <small className="font-normal text-muted ml-1">(on filesystem)</small>
+                  { isFolder ? (
+                    <Help width="300">
+                      <p>
+                        The folder name follows the display name until you type a different one.
+                      </p>
+                    </Help>
                   ) : (
-                    <IconEdit
-                      className="cursor-pointer opacity-50 hover:opacity-80"
-                      size={16}
-                      strokeWidth={1.5}
-                      onClick={() => toggleEditing(true)}
-                      data-testid="rename-request-edit-icon"
-                    />
+                    <Help width="300">
+                      <p>
+                        Bruno saves each request as a file in your collection's folder.
+                      </p>
+                      <p className="mt-2">
+                        The file name follows the {itemTypeLabel.toLowerCase()} name until you type a different one.
+                      </p>
+                    </Help>
                   )}
+                </label>
+                <div className="relative flex flex-row gap-1 items-center justify-between">
+                  <input
+                    id="file-name"
+                    type="text"
+                    name="filename"
+                    placeholder={isFolder ? 'Folder Name' : 'File Name'}
+                    className="!pr-10 block textbox mt-2 w-full"
+                    autoComplete="off"
+                    autoCorrect="off"
+                    autoCapitalize="off"
+                    spellCheck="false"
+                    onChange={formik.handleChange}
+                    value={formik.values.filename || ''}
+                  />
+                  {itemType !== 'folder' && <span className="absolute right-2 top-4 flex justify-center items-center file-extension">{itemType === 'js' ? '.js' : `.${collection?.format || 'bru'}`}</span>}
                 </div>
-                {isEditing ? (
-                  <div className="relative flex flex-row gap-1 items-center justify-between">
-                    <input
-                      id="file-name"
-                      type="text"
-                      name="filename"
-                      placeholder={isFolder ? 'Folder Name' : 'File Name'}
-                      className="!pr-10 block textbox mt-2 w-full"
-                      autoComplete="off"
-                      autoCorrect="off"
-                      autoCapitalize="off"
-                      spellCheck="false"
-                      onChange={formik.handleChange}
-                      value={formik.values.filename || ''}
-                    />
-                    {itemType !== 'folder' && <span className="absolute right-2 top-4 flex justify-center items-center file-extension">{itemType === 'js' ? '.js' : `.${collection?.format || 'bru'}`}</span>}
-                  </div>
-                ) : (
-                  <div className="relative flex flex-row gap-1 items-center justify-between">
-                    <PathDisplay
-                      baseName={formik.values.filename}
-                    />
-                  </div>
-                )}
                 {formik.touched.filename && formik.errors.filename ? (
                   <div className="text-red-500" data-testid="form-error">{formik.errors.filename}</div>
                 ) : null}

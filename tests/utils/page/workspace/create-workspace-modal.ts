@@ -8,8 +8,6 @@ export const buildCreateWorkspaceModalLocators = (page: Page) => {
     nameInput: () => modal().locator('#workspace-name'),
     folderNameInput: () => modal().locator('#workspace-folder-name'),
     locationInput: () => modal().locator('#workspace-location'),
-    // The folder name is a read-only PathDisplay preview until the edit toggle is used.
-    folderNamePreview: () => modal().locator('.name-container'),
     submitButton: () => modal().getByRole('button', { name: 'Create Workspace' })
   };
 };

@@ -7,8 +7,7 @@ import {
   createFolder,
   closeAllCollections,
   openNewFolderModal,
-  createFolderViaModal,
-  revealFilesystemName
+  createFolderViaModal
 } from '../../utils/page';
 import { findCollectionDir } from '../utils';
 
@@ -43,10 +42,9 @@ test.describe('Naming collisions - create folder', () => {
 
     await createCollection(page, 'Create Folder Reserved', testDir, 'bru');
 
-    await test.step('Enter reserved name "CON", reveal filesystem name, submit', async () => {
+    await test.step('Enter reserved name "CON", submit', async () => {
       await openNewFolderModal(page, 'Create Folder Reserved');
       await sidebar.newFolderModal.nameInput().fill('CON');
-      await revealFilesystemName(page);
       await modal.button('Create').click();
     });
 

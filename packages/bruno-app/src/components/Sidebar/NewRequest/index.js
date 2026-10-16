@@ -13,10 +13,9 @@ import { addTab } from 'providers/ReduxStore/slices/tabs';
 import HttpMethodSelector from 'components/RequestPane/QueryUrl/HttpMethodSelector';
 import { getDefaultRequestPaneTab } from 'utils/collections';
 import { getRequestFromCurlCommand } from 'utils/curl';
-import { IconArrowBackUp, IconCaretDown, IconEdit } from '@tabler/icons';
+import { IconCaretDown } from '@tabler/icons';
 import { sanitizeName, validateName, validateNameError } from 'utils/common/regex';
 import Dropdown from 'components/Dropdown';
-import PathDisplay from 'components/PathDisplay';
 import Portal from 'components/Portal';
 import Help from 'components/Help';
 import StyledWrapper from './StyledWrapper';
@@ -37,7 +36,7 @@ const NewRequest = ({ collectionUid, item, isEphemeral, onClose }) => {
     {}
   );
   const [curlRequestTypeDetected, setCurlRequestTypeDetected] = useState(null);
-  const [showFilesystemName, toggleShowFilesystemName] = useState(false);
+  const [showFilesystemName, toggleShowFilesystemName] = useState(true);
 
   const dropdownTippyRef = useRef();
   const onDropdownCreate = (ref) => (dropdownTippyRef.current = ref);
@@ -73,8 +72,6 @@ const NewRequest = ({ collectionUid, item, isEphemeral, onClose }) => {
   const curlRequestTypeChange = (type) => {
     setCurlRequestTypeDetected(type);
   };
-
-  const [isEditing, toggleEditing] = useState(false);
 
   const getRequestType = (collectionPresets) => {
     if (!collectionPresets || !collectionPresets.requestType) {
@@ -421,7 +418,12 @@ const NewRequest = ({ collectionUid, item, isEphemeral, onClose }) => {
                 spellCheck="false"
                 onChange={(e) => {
                   formik.setFieldValue('requestName', e.target.value);
-                  !isEditing && formik.setFieldValue('filename', sanitizeName(e.target.value));
+                  // Follow the request name until the user types a custom filesystem name
+                  const filenameFollowsRequestName = !formik.values.filename
+                    || formik.values.filename === sanitizeName(formik.values.requestName);
+                  if (filenameFollowsRequestName) {
+                    formik.setFieldValue('filename', sanitizeName(e.target.value));
+                  }
                 }}
                 value={formik.values.requestName || ''}
                 data-testid="request-name"
@@ -432,59 +434,32 @@ const NewRequest = ({ collectionUid, item, isEphemeral, onClose }) => {
             </div>
             {showFilesystemName && (
               <div className="mt-4">
-                <div className="flex items-center justify-between">
-                  <label htmlFor="filename" className="flex items-center font-medium">
-                    File Name <small className="font-normal text-muted ml-1">(on filesystem)</small>
-                    <Help width="300">
-                      <p>Bruno saves each request as a file in your collection's folder.</p>
-                      <p className="mt-2">
-                        You can choose a file name different from your request's name or one compatible with filesystem
-                        rules.
-                      </p>
-                    </Help>
-                  </label>
-                  {isEditing ? (
-                    <IconArrowBackUp
-                      className="cursor-pointer opacity-50 hover:opacity-80"
-                      size={16}
-                      strokeWidth={1.5}
-                      onClick={() => toggleEditing(false)}
-                    />
-                  ) : (
-                    <IconEdit
-                      className="cursor-pointer opacity-50 hover:opacity-80"
-                      size={16}
-                      strokeWidth={1.5}
-                      onClick={() => toggleEditing(true)}
-                      data-testid="filename-edit-icon"
-                    />
-                  )}
+                <label htmlFor="filename" className="flex items-center font-medium">
+                  File Name <small className="font-normal text-muted ml-1">(on filesystem)</small>
+                  <Help width="300">
+                    <p>Bruno saves each request as a file in your collection's folder.</p>
+                    <p className="mt-2">
+                      The file name follows the request name until you type a different one.
+                    </p>
+                  </Help>
+                </label>
+                <div className="relative flex flex-row gap-1 items-center justify-between">
+                  <input
+                    id="file-name"
+                    type="text"
+                    name="filename"
+                    placeholder="File Name"
+                    className="!pr-10 block textbox mt-2 w-full"
+                    autoComplete="off"
+                    autoCorrect="off"
+                    autoCapitalize="off"
+                    spellCheck="false"
+                    onChange={formik.handleChange}
+                    value={formik.values.filename || ''}
+                    data-testid="file-name"
+                  />
+                  <span className="absolute right-2 top-4 flex justify-center items-center file-extension">.{collection.format}</span>
                 </div>
-                {isEditing ? (
-                  <div className="relative flex flex-row gap-1 items-center justify-between">
-                    <input
-                      id="file-name"
-                      type="text"
-                      name="filename"
-                      placeholder="File Name"
-                      className="!pr-10 block textbox mt-2 w-full"
-                      autoComplete="off"
-                      autoCorrect="off"
-                      autoCapitalize="off"
-                      spellCheck="false"
-                      onChange={formik.handleChange}
-                      value={formik.values.filename || ''}
-                      data-testid="file-name"
-                    />
-                    <span className="absolute right-2 top-4 flex justify-center items-center file-extension">.{collection.format}</span>
-                  </div>
-                ) : (
-                  <div className="relative flex flex-row gap-1 items-center justify-between">
-                    <PathDisplay
-                      baseName={formik.values.filename ? `${formik.values.filename}.${collection.format}` : ''}
-                    />
-                  </div>
-                )}
                 {formik.touched.filename && formik.errors.filename ? (
                   <div className="text-red-500" data-testid="form-error">{formik.errors.filename}</div>
                 ) : null}

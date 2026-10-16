@@ -6,9 +6,7 @@ import Portal from 'components/Portal';
 import Modal from 'components/Modal';
 import { useDispatch } from 'react-redux';
 import { newFolder } from 'providers/ReduxStore/slices/collections/actions';
-import { IconArrowBackUp, IconEdit } from '@tabler/icons';
 import { sanitizeName, validateName, validateNameError } from 'utils/common/regex';
-import PathDisplay from 'components/PathDisplay/index';
 import Help from 'components/Help';
 import Dropdown from 'components/Dropdown';
 import { IconCaretDown } from '@tabler/icons';
@@ -18,8 +16,7 @@ import Button from 'ui/Button';
 const NewFolder = ({ collectionUid, item, onClose }) => {
   const dispatch = useDispatch();
   const inputRef = useRef();
-  const [isEditing, toggleEditing] = useState(false);
-  const [showFilesystemName, toggleShowFilesystemName] = useState(false);
+  const [showFilesystemName, toggleShowFilesystemName] = useState(true);
 
   const dropdownTippyRef = useRef();
   const onDropdownCreate = (ref) => (dropdownTippyRef.current = ref);
@@ -102,7 +99,12 @@ const NewFolder = ({ collectionUid, item, onClose }) => {
               spellCheck="false"
               onChange={(e) => {
                 formik.setFieldValue('folderName', e.target.value);
-                !isEditing && formik.setFieldValue('directoryName', sanitizeName(e.target.value));
+                // Follow the folder name until the user types a custom filesystem name
+                const directoryNameFollowsFolderName = !formik.values.directoryName
+                  || formik.values.directoryName === sanitizeName(formik.values.folderName);
+                if (directoryNameFollowsFolderName) {
+                  formik.setFieldValue('directoryName', sanitizeName(e.target.value));
+                }
               }}
               data-testid="new-folder-input"
               value={formik.values.folderName || ''}
@@ -113,55 +115,27 @@ const NewFolder = ({ collectionUid, item, onClose }) => {
 
             {showFilesystemName && (
               <div className="mt-4">
-                <div className="flex items-center justify-between">
-                  <label htmlFor="directoryName" className="flex items-center font-medium">
-                    Folder Name <small className="font-normal text-muted ml-1">(on filesystem)</small>
-                    <Help width="300">
-                      <p>
-                        You can choose to save the folder as a different name on your file system versus what is displayed in the app.
-                      </p>
-                    </Help>
-                  </label>
-                  {isEditing ? (
-                    <IconArrowBackUp
-                      className="cursor-pointer opacity-50 hover:opacity-80"
-                      size={16}
-                      strokeWidth={1.5}
-                      onClick={() => toggleEditing(false)}
-                    />
-                  ) : (
-                    <IconEdit
-                      className="cursor-pointer opacity-50 hover:opacity-80"
-                      size={16}
-                      strokeWidth={1.5}
-                      onClick={() => toggleEditing(true)}
-                    />
-                  )}
-                </div>
-                {isEditing ? (
-                  <div className="relative flex flex-row gap-1 items-center justify-between">
-                    <input
-                      id="file-name"
-                      type="text"
-                      name="directoryName"
-                      placeholder="Folder Name"
-                      className="block textbox mt-2 w-full"
-                      autoComplete="off"
-                      autoCorrect="off"
-                      autoCapitalize="off"
-                      spellCheck="false"
-                      onChange={formik.handleChange}
-                      value={formik.values.directoryName || ''}
-                    />
-                  </div>
-                ) : (
-                  <div className="relative flex flex-row gap-1 items-center justify-between">
-                    <PathDisplay
-                      iconType="folder"
-                      baseName={formik.values.directoryName}
-                    />
-                  </div>
-                )}
+                <label htmlFor="directoryName" className="flex items-center font-medium">
+                  Folder Name <small className="font-normal text-muted ml-1">(on filesystem)</small>
+                  <Help width="300">
+                    <p>
+                      The folder name follows the display name until you type a different one.
+                    </p>
+                  </Help>
+                </label>
+                <input
+                  id="file-name"
+                  type="text"
+                  name="directoryName"
+                  placeholder="Folder Name"
+                  className="block textbox mt-2 w-full"
+                  autoComplete="off"
+                  autoCorrect="off"
+                  autoCapitalize="off"
+                  spellCheck="false"
+                  onChange={formik.handleChange}
+                  value={formik.values.directoryName || ''}
+                />
                 {formik.touched.directoryName && formik.errors.directoryName ? (
                   <div className="text-red-500" data-testid="form-error">{formik.errors.directoryName}</div>
                 ) : null}

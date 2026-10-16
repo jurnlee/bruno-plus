@@ -3822,18 +3822,10 @@ const renameItemTo = async (page: Page, name: string, newName: string, type: Ite
   });
 };
 
-const revealFilesystemName = async (page: Page) => {
-  const { sidebar } = buildCommonLocators(page);
-  await sidebar.filesystemName.optionsButton().first().click();
-  await sidebar.filesystemName.showFilesystemNameItem().click();
-};
-
 const renameViaFilename = async (page: Page, name: string, newFilename: string, type: ItemType = 'request') => {
   await test.step(`Rename filesystem name of "${name}" to "${newFilename}"`, async () => {
     const { modal, sidebar } = buildCommonLocators(page);
     await openRenameModal(page, name, type);
-    await revealFilesystemName(page);
-    await sidebar.renameItemModal.filenameEditIcon().click();
     await sidebar.filesystemName.fileNameInput().fill(newFilename);
     await sidebar.renameItemModal.submit().click();
     await modal.byTitle(renameModalTitle(type)).waitFor({ state: 'hidden' });
@@ -3871,8 +3863,6 @@ const createRequestWithEditedFilename = async (
     const { modal, request, sidebar } = buildCommonLocators(page);
     await openNewRequestModal(page, collectionName);
     await request.requestNameInput().fill(displayName);
-    await revealFilesystemName(page);
-    await sidebar.newRequestModal.filenameEditIcon().click();
     await sidebar.filesystemName.fileNameInput().fill(filename);
     await sidebar.newRequestModal.createButton().click();
     await modal.any().waitFor({ state: 'hidden' });
@@ -4193,7 +4183,6 @@ export {
   pasteIntoFolder,
   openRenameModal,
   renameItemTo,
-  revealFilesystemName,
   renameViaFilename,
   openNewRequestModal,
   createRequestViaModal,

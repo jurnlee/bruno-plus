@@ -3,8 +3,7 @@ import { useSelector, useDispatch } from 'react-redux';
 import Modal from 'components/Modal';
 import SearchInput from 'components/SearchInput';
 import Button from 'ui/Button';
-import { IconFolder, IconChevronRight, IconCheck, IconX, IconEye, IconEyeOff, IconEdit, IconArrowBackUp } from '@tabler/icons';
-import PathDisplay from 'components/PathDisplay/index';
+import { IconFolder, IconChevronRight, IconCheck, IconX, IconEye, IconEyeOff } from '@tabler/icons';
 import Help from 'components/Help';
 import filter from 'lodash/filter';
 import toast from 'react-hot-toast';
@@ -69,8 +68,7 @@ const SaveTransientRequest = ({ item: itemProp, collection: collectionProp, isOp
   const [showNewFolderInput, setShowNewFolderInput] = useState(false);
   const [newFolderName, setNewFolderName] = useState('');
   const [newFolderDirectoryName, setNewFolderDirectoryName] = useState('');
-  const [showFilesystemName, setShowFilesystemName] = useState(false);
-  const [isEditingFolderFilename, setIsEditingFolderFilename] = useState(false);
+  const [showFilesystemName, setShowFilesystemName] = useState(true);
   const [pendingFolderNavigation, setPendingFolderNavigation] = useState(null);
 
   // State for new collection creation
@@ -114,8 +112,7 @@ const SaveTransientRequest = ({ item: itemProp, collection: collectionProp, isOp
     setShowNewFolderInput(false);
     setNewFolderName('');
     setNewFolderDirectoryName('');
-    setShowFilesystemName(false);
-    setIsEditingFolderFilename(false);
+    setShowFilesystemName(true);
     setPendingFolderNavigation(null);
     setSelectedTargetCollectionPath(null);
     setIsSelectingCollection(isScratchCollection);
@@ -280,21 +277,22 @@ const SaveTransientRequest = ({ item: itemProp, collection: collectionProp, isOp
     setShowNewFolderInput(true);
     setNewFolderName('');
     setNewFolderDirectoryName('');
-    setShowFilesystemName(false);
-    setIsEditingFolderFilename(false);
+    setShowFilesystemName(true);
   };
 
   const handleCancelNewFolder = () => {
     setShowNewFolderInput(false);
     setNewFolderName('');
     setNewFolderDirectoryName('');
-    setShowFilesystemName(false);
-    setIsEditingFolderFilename(false);
+    setShowFilesystemName(true);
   };
 
   const handleNewFolderNameChange = (value) => {
     setNewFolderName(value);
-    if (!isEditingFolderFilename) {
+    // Follow the folder name until the user types a custom filesystem name
+    const directoryNameFollowsFolderName = !newFolderDirectoryName
+      || newFolderDirectoryName === sanitizeName(newFolderName);
+    if (directoryNameFollowsFolderName) {
       setNewFolderDirectoryName(sanitizeName(value));
     }
   };
@@ -680,74 +678,42 @@ const SaveTransientRequest = ({ item: itemProp, collection: collectionProp, isOp
 
                           {showFilesystemName && (
                             <div className="new-folder-filesystem-wrapper">
-                              <div className="flex items-center justify-between">
-                                <label className="new-folder-filesystem-label flex items-center font-medium">
-                                  Folder Name <small className="font-normal text-muted ml-1">(on filesystem)</small>
-                                  <Help width={300} placement="top">
-                                    <p>
-                                      You can choose to save the folder as a different name on your file system versus what is displayed in the app.
-                                    </p>
-                                  </Help>
-                                </label>
-                                {isEditingFolderFilename ? (
-                                  <IconArrowBackUp
-                                    className="cursor-pointer opacity-50 hover:opacity-80"
-                                    size={16}
-                                    strokeWidth={1.5}
-                                    onClick={() => setIsEditingFolderFilename(false)}
-                                  />
-                                ) : (
-                                  <IconEdit
-                                    className="cursor-pointer opacity-50 hover:opacity-80"
-                                    size={16}
-                                    strokeWidth={1.5}
-                                    onClick={() => setIsEditingFolderFilename(true)}
-                                  />
-                                )}
-                              </div>
-                              {isEditingFolderFilename ? (
-                                <div className="relative flex flex-row gap-1 items-center justify-between">
-                                  <input
-                                    type="text"
-                                    className="block textbox mt-2 w-full"
-                                    placeholder="Folder Name"
-                                    value={newFolderDirectoryName}
-                                    autoComplete="off"
-                                    autoCorrect="off"
-                                    autoCapitalize="off"
-                                    spellCheck="false"
-                                    onChange={(e) => setNewFolderDirectoryName(e.target.value)}
-                                    onKeyDown={(e) => {
-                                      if (e.key === 'Enter') {
-                                        e.preventDefault();
-                                        e.stopPropagation();
-                                        handleCreateNewFolder();
-                                      } else if (e.key === 'Escape') {
-                                        e.stopPropagation();
-                                        handleCancelNewFolder();
-                                      }
-                                    }}
-                                  />
-                                </div>
-                              ) : (
-                                <div className="relative flex flex-row gap-1 items-center justify-between">
-                                  <PathDisplay
-                                    iconType="folder"
-                                    baseName={newFolderDirectoryName}
-                                  />
-                                </div>
-                              )}
+                              <label className="new-folder-filesystem-label flex items-center font-medium">
+                                Folder Name <small className="font-normal text-muted ml-1">(on filesystem)</small>
+                                <Help width={300} placement="top">
+                                  <p>
+                                    The folder name follows the display name until you type a different one.
+                                  </p>
+                                </Help>
+                              </label>
+                              <input
+                                type="text"
+                                className="block textbox mt-2 w-full"
+                                placeholder="Folder Name"
+                                value={newFolderDirectoryName}
+                                autoComplete="off"
+                                autoCorrect="off"
+                                autoCapitalize="off"
+                                spellCheck="false"
+                                onChange={(e) => setNewFolderDirectoryName(e.target.value)}
+                                onKeyDown={(e) => {
+                                  if (e.key === 'Enter') {
+                                    e.preventDefault();
+                                    e.stopPropagation();
+                                    handleCreateNewFolder();
+                                  } else if (e.key === 'Escape') {
+                                    e.stopPropagation();
+                                    handleCancelNewFolder();
+                                  }
+                                }}
+                              />
                             </div>
                           )}
 
                           <button
                             type="button"
                             className="new-folder-toggle-filesystem-btn"
-                            onClick={() => {
-                              setShowFilesystemName(!showFilesystemName);
-                              setNewFolderDirectoryName(sanitizeName(newFolderName));
-                              setIsEditingFolderFilename(false);
-                            }}
+                            onClick={() => setShowFilesystemName(!showFilesystemName)}
                           >
                             {showFilesystemName ? (
                               <>

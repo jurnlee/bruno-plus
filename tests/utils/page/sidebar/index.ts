@@ -70,13 +70,11 @@ export const buildSidebarLocators = (page: Page) => {
     // Modals opened from a sidebar row's "..." menu.
     renameItemModal: {
       nameInput: (): Locator => page.locator('#collection-item-name'),
-      submit: (): Locator => page.getByTestId('rename-item-button'),
-      filenameEditIcon: (): Locator => page.getByTestId('rename-request-edit-icon')
+      submit: (): Locator => page.getByTestId('rename-item-button')
     },
 
     newRequestModal: {
-      createButton: (): Locator => page.getByTestId('create-new-request-button'),
-      filenameEditIcon: (): Locator => page.getByTestId('filename-edit-icon')
+      createButton: (): Locator => page.getByTestId('create-new-request-button')
     },
 
     newFolderModal: {
@@ -99,9 +97,6 @@ export const buildSidebarLocators = (page: Page) => {
     },
 
     filesystemName: {
-      optionsButton: (): Locator => page.locator('.btn-advanced'),
-      showFilesystemNameItem: (): Locator =>
-        page.locator('.dropdown-item').filter({ hasText: 'Show Filesystem Name' }),
       fileNameInput: (): Locator => page.locator('#file-name')
     }
   };

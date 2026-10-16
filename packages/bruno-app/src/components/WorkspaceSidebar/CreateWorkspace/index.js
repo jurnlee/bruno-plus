@@ -3,10 +3,8 @@ import { useFormik } from 'formik';
 import { useDispatch, useSelector } from 'react-redux';
 import * as Yup from 'yup';
 import toast from 'react-hot-toast';
-import { IconArrowBackUp, IconEdit } from '@tabler/icons';
 import Modal from 'components/Modal';
 import Help from 'components/Help';
-import PathDisplay from 'components/PathDisplay/index';
 import { createWorkspaceAction } from 'providers/ReduxStore/slices/workspaces/actions';
 import { browseDirectory } from 'providers/ReduxStore/slices/collections/actions';
 import { multiLineMsg } from 'utils/common/index';
@@ -19,7 +17,6 @@ const CreateWorkspace = ({ onClose }) => {
   const dispatch = useDispatch();
   const preferences = useSelector((state) => state.app.preferences);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [isEditing, setIsEditing] = useState(false);
 
   const defaultLocation = get(preferences, 'general.defaultLocation', '');
 
@@ -110,17 +107,13 @@ const CreateWorkspace = ({ onClose }) => {
               autoCapitalize="off"
               spellCheck="false"
               onChange={(e) => {
-                const workspaceName = e.target.value;
-                if (!isEditing) {
-                  formik.setValues((values) => ({
-                    ...values,
-                    workspaceName,
-                    workspaceFolderName: sanitizeName(workspaceName)
-                  }));
-                  return;
+                formik.setFieldValue('workspaceName', e.target.value);
+                // Follow the workspace name until the user types a custom folder name
+                const folderNameFollowsWorkspaceName = !formik.values.workspaceFolderName
+                  || formik.values.workspaceFolderName === sanitizeName(formik.values.workspaceName);
+                if (folderNameFollowsWorkspaceName) {
+                  formik.setFieldValue('workspaceFolderName', sanitizeName(e.target.value));
                 }
-
-                formik.handleChange(e);
               }}
               value={formik.values.workspaceName || ''}
             />
@@ -131,50 +124,29 @@ const CreateWorkspace = ({ onClose }) => {
 
           {formik.values.workspaceName?.trim()?.length > 0 && (
             <div className="mb-4">
-              <div className="flex items-center justify-between mb-2">
-                <label htmlFor="workspaceFolderName" className="flex items-center font-semibold">
-                  Folder Name
-                  <Help width="300">
-                    <p>
-                      The name of the folder used to store the workspace.
-                    </p>
-                    <p className="mt-2">
-                      You can choose a folder name different from your workspace's name or one compatible with filesystem rules.
-                    </p>
-                  </Help>
-                </label>
-                {isEditing ? (
-                  <IconArrowBackUp
-                    className="cursor-pointer opacity-50 hover:opacity-80"
-                    size={16}
-                    strokeWidth={1.5}
-                    onClick={() => setIsEditing(false)}
-                  />
-                ) : (
-                  <IconEdit
-                    className="cursor-pointer opacity-50 hover:opacity-80"
-                    size={16}
-                    strokeWidth={1.5}
-                    onClick={() => setIsEditing(true)}
-                  />
-                )}
-              </div>
-              {isEditing ? (
-                <input
-                  id="workspace-folder-name"
-                  type="text"
-                  name="workspaceFolderName"
-                  className="block textbox w-full"
-                  onChange={formik.handleChange}
-                  autoComplete="off"
-                  autoCorrect="off"
-                  autoCapitalize="off"
-                  spellCheck="false"
-                  value={formik.values.workspaceFolderName || ''}
-                />
-              ) : (
-                <PathDisplay baseName={formik.values.workspaceFolderName} />
-              )}
+              <label htmlFor="workspaceFolderName" className="flex items-center font-semibold">
+                Folder Name
+                <Help width="300">
+                  <p>
+                    The name of the folder used to store the workspace.
+                  </p>
+                  <p className="mt-2">
+                    The folder name follows the workspace name until you type a different one.
+                  </p>
+                </Help>
+              </label>
+              <input
+                id="workspace-folder-name"
+                type="text"
+                name="workspaceFolderName"
+                className="block textbox w-full"
+                onChange={formik.handleChange}
+                autoComplete="off"
+                autoCorrect="off"
+                autoCapitalize="off"
+                spellCheck="false"
+                value={formik.values.workspaceFolderName || ''}
+              />
               {formik.touched.workspaceFolderName && formik.errors.workspaceFolderName ? (
                 <div className="text-red-500 text-sm mt-1">{formik.errors.workspaceFolderName}</div>
               ) : null}

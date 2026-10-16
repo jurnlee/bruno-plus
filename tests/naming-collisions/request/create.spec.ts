@@ -8,8 +8,7 @@ import {
   closeAllCollections,
   openNewRequestModal,
   createRequestViaModal,
-  createRequestWithEditedFilename,
-  revealFilesystemName
+  createRequestWithEditedFilename
 } from '../../utils/page';
 import { listRequestFiles, findCollectionDir, isCaseInsensitiveFs } from '../utils';
 
@@ -105,10 +104,9 @@ test.describe('Naming collisions - create request', () => {
 
     await createCollection(page, 'Create Reserved', testDir, 'bru');
 
-    await test.step('Enter reserved name "CON", reveal filesystem name, submit', async () => {
+    await test.step('Enter reserved name "CON", submit', async () => {
       await openNewRequestModal(page, 'Create Reserved');
       await request.requestNameInput().fill('CON');
-      await revealFilesystemName(page);
       await sidebar.newRequestModal.createButton().click();
     });
 

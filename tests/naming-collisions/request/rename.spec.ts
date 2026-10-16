@@ -8,8 +8,7 @@ import {
   closeAllCollections,
   openRenameModal,
   renameItemTo,
-  renameViaFilename,
-  revealFilesystemName
+  renameViaFilename
 } from '../../utils/page';
 import { listRequestFiles, findCollectionDir, isCaseInsensitiveFs } from '../utils';
 
@@ -85,10 +84,9 @@ test.describe('Naming collisions - rename request', () => {
 
     const renameModal = modal.byTitle('Rename Request');
 
-    await test.step('Open rename, set the name to reserved "CON", reveal filesystem name, submit', async () => {
+    await test.step('Open rename, set the name to reserved "CON", submit', async () => {
       await openRenameModal(page, 'login');
       await sidebar.renameItemModal.nameInput().fill('CON');
-      await revealFilesystemName(page);
       await sidebar.renameItemModal.submit().click();
     });
 

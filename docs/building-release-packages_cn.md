@@ -24,17 +24,34 @@ tag 只存在于 git(如 `v4.1.0`),**不会回写**到任何 `package.json`—�
 因此产物文件名的版本号来源如下,**构建前必须手动 bump**,否则打出来的包永远显示旧版本,
 无法区分发布批次:
 
-| 产物 | 版本来源 | 当前值 |
+| 产物 | 版本来源 | 上次发布值 |
 |---|---|---|
-| `bruno_<version>_x64_win.exe` | `packages/bruno-electron/package.json` 的 `version`(electron-builder `artifactName` 的 `${version}`) | 2.0.0 |
-| `usebruno-cli-<ver>.tgz` | `packages/bruno-cli/package.json` 的 `version` | 1.16.0 |
-| `usebruno-common-<ver>.tgz` | `packages/bruno-common/package.json` 的 `version` | 0.1.0 |
-| `usebruno-js-<ver>.tgz` | `packages/bruno-js/package.json` 的 `version` | 0.12.0 |
+| `bruno_<version>_x64_win.exe` | `packages/bruno-electron/package.json` 的 `version`(electron-builder `artifactName` 的 `${version}`) | 2.1.2 |
+| `usebruno-cli-<ver>.tgz` | `packages/bruno-cli/package.json` 的 `version` | 1.17.1 |
+| `usebruno-common-<ver>.tgz` | `packages/bruno-common/package.json` 的 `version` | 0.1.1 |
+| `usebruno-js-<ver>.tgz` | `packages/bruno-js/package.json` 的 `version` | 0.13.1 |
+
+本列记录最近一次成功构建的批次,每次发布后随手更新;判断时以各 `package.json` 的实际值为准。
 
 fork 的建议做法:每次发布确定一个自己的版本号(可沿用 `2.0.x` 序列,或改用日期式
-如 `2.0.0-ddt.1`),至少 bump `bruno-electron` 与 `bruno-cli` 两处;若 `common`/`js`
-的对外 API 有变动(如 data-file),一并 bump 以便安装方区分。改动只涉及各
-`package.json` 的 `version` 字段,无其它联动配置。
+如 `2.0.0-ddt.1`),至少 bump `bruno-electron`、`bruno-app` 与 `bruno-cli` 三处
+(`bruno-app` 的 version 是界面显示的版本,见坑 14);若 `common`/`js`
+的对外 API 有变动(如 data-file),一并 bump 以便安装方区分。
+
+### 版本 bump 必须同步 workspace 内的依赖声明
+
+改动**不止**各包的 `version` 字段。包间依赖是精确版本声明(如 `"@usebruno/common": "0.1.1"`),
+bump 后若引用方的声明仍指向旧版本,就不再命中 workspace 的实际版本——npm 可能转从
+registry 解析原版包,fork 改动静默丢失且无任何报错。实测发现过历史脱节:cli 与 electron
+声明 `@usebruno/js@0.12.0` 时工作区已是 0.13.0,此前仅靠根 `node_modules` 的 workspace
+符号链接侥幸解析正确;在干净环境重装时就有装进原版包的风险。
+
+bump 批次内 grep 并对齐所有引用方——只有被 bump 的包名需要处理;`^` 范围声明(如
+converters 的 `"@usebruno/common": "^0.1.0"`)在小版本内自动命中,无需改动:
+
+```bash
+grep -n '"@usebruno/' packages/*/package.json
+```
 
 ## 与上游同步
 
@@ -104,6 +121,9 @@ npm run build:graphql-docs && npm run build:bruno-query && npm run build:bruno-c
   && npm run sandbox:bundle-libraries --workspace=packages/bruno-js
 ```
 
+> 刚完整跑过第 1 步的 `npm run setup` 的话,本步可以跳过——setup 已按同一顺序重建了
+> 全部共享包,并完成了沙箱库 bundle。
+
 ### 3. 构建 GUI
 
 ```bash
@@ -114,12 +134,25 @@ npm run build:electron   # 复制 web → bruno-electron/web,修正静态路径,
 `build:electron` 在 Windows 上调用 `dist:win`,按 `electron-builder-config.js` 的
 `win.target` 打 **x64 + arm64 双架构** NSIS 安装包,产物在 `packages/bruno-electron/out/`。
 
-只打 x64(本机没有 ARM64 MSVC 组件时):
+只打 x64(本机没有 ARM64 MSVC 组件时)。注意 `build:electron` 里"复制 web + 修正静态
+路径 + 去 sourcemap"的前置步骤写死在 `scripts/build-electron.js` 且与 `dist:win`
+(双架构)耦合,没有独立入口——绕过它直接调 electron-builder 前必须手动补做:
 
 ```bash
+# 前置:复刻 build-electron.js 的 prep 步骤(仓库根目录执行)
+rm -rf packages/bruno-electron/out packages/bruno-electron/web
+mkdir -p packages/bruno-electron/web
+cp -r packages/bruno-app/dist/. packages/bruno-electron/web/
+sed -i 's|/static|./static|g' packages/bruno-electron/web/*.html
+sed -i 's|/static/font|../../static/font|g' packages/bruno-electron/web/static/css/*.css
+rm -f packages/bruno-electron/web/*.map
+
+# 打包
 cd packages/bruno-electron
 npx electron-builder --win nsis --x64 --config electron-builder-config.js
 ```
+
+不做前置步骤直接打包,产出的安装包会缺 web 资源(见坑 13)。
 
 > 注意必须**同时写 target 名和架构**(`--win nsis --x64`)。只写 `--x64` 无效——config
 > 里 `win.target[0].arch: ['x64', 'arm64']` 优先于 CLI 架构标志,arm64 的原生依赖重建
@@ -150,6 +183,14 @@ data-file 目录,要 grep bundle 内容):
 tar -xzf release/usebruno-common-*.tgz -O package/dist/cjs/index.js | grep -c parseDataFile
 ```
 
+`npm pack` 对 bruno-common 会触发 prepack(先跑该包全部 jest 再 clean build),tarball
+里的 dist 必然来自当前源码。js 的 tarball 是纯源码分发,验证 fork 沙箱改动直接 grep
+源文件:
+
+```bash
+tar -xzf release/usebruno-js-*.tgz -O package/src/sandbox/quickjs/shims/require.js | grep -c additionalContextRoots
+```
+
 ## 产物安装方式(CLI)
 
 ### 项目内安装
@@ -158,18 +199,18 @@ tar -xzf release/usebruno-common-*.tgz -O package/dist/cjs/index.js | grep -c pa
 
 ```jsonc
 {
-  "dependencies": { "@usebruno/cli": "file:./release/usebruno-cli-1.16.0.tgz" },
+  "dependencies": { "@usebruno/cli": "file:./release/usebruno-cli-1.17.1.tgz" },
   "overrides": {
-    "@usebruno/common": "file:./release/usebruno-common-0.1.0.tgz",
-    "@usebruno/js": "file:./release/usebruno-js-0.12.0.tgz"
+    "@usebruno/common": "file:./release/usebruno-common-0.1.1.tgz",
+    "@usebruno/js": "file:./release/usebruno-js-0.13.1.tgz"
   }
 }
 ```
 
 ### 全局安装
 
-**不能直接 `npm install -g usebruno-cli-1.16.0.tgz`**:npm 的 `overrides` 只在项目
-package.json 中生效,`-g` 安装没有 overrides 上下文,CLI 的 `@usebruno/common@0.1.0`
+**不能直接 `npm install -g usebruno-cli-1.17.1.tgz`**:npm 的 `overrides` 只在项目
+package.json 中生效,`-g` 安装没有 overrides 上下文,CLI 的 `@usebruno/common@0.1.1`
 会从 registry 解析成原版(缺 `parseDataFile`),`bru run --data` 会坏。
 
 方式一,**本机有仓库(开发场景,推荐)**——`npm link` 链到 workspace,依赖走仓库
@@ -193,10 +234,10 @@ cp <发布目录>/usebruno-*.tgz .
 # 写入 package.json:
 # {
 #   "name": "bruno-cli-global", "private": true,
-#   "dependencies": { "@usebruno/cli": "file:./usebruno-cli-1.16.0.tgz" },
+#   "dependencies": { "@usebruno/cli": "file:./usebruno-cli-1.17.1.tgz" },
 #   "overrides": {
-#     "@usebruno/common": "file:./usebruno-common-0.1.0.tgz",
-#     "@usebruno/js": "file:./usebruno-js-0.12.0.tgz"
+#     "@usebruno/common": "file:./usebruno-common-0.1.1.tgz",
+#     "@usebruno/js": "file:./usebruno-js-0.13.1.tgz"
 #   }
 # }
 npm install
@@ -233,3 +274,15 @@ GUI 安装包直接运行 `bruno_<version>_x64_win.exe`(未签名,见坑 6)。
 11. **产物版本号不随上游 release tag 变化。** 上游打了 `v4.1.0` tag,`bruno-electron`
     的 `package.json` 依旧是 `2.0.0`,构建出的安装包仍叫 `bruno_2.0.0_x64_win.exe`。
     发布前记得手动 bump(见"版本号机制"),别用文件名推断代码对应的上游版本。
+12. **版本 bump 后依赖声明未同步,产物可能静默换回 registry 原版包。** 包间是精确版本
+    声明,只 bump `version` 字段不更新引用方的话,声明与 workspace 实际版本脱节,干净
+    环境重装时可能从 registry 拉原版包,fork 功能静默丢失(见"版本 bump 必须同步
+    workspace 内的依赖声明")。
+13. **绕过 `build:electron` 直接打 x64 会缺 web 资源。** web 复制与路径修正步骤和
+    `dist:win` 耦合在 `scripts/build-electron.js` 里,没有独立入口;必须手动补做前置
+    步骤(见第 3 步"只打 x64"内的命令),否则安装包缺 web 资源。
+14. **界面显示的版本来自 `bruno-app`,不是 `bruno-electron`。** 安装包文件名取
+    `packages/bruno-electron/package.json` 的 `version`,而 GUI 界面(右下角/报错
+    信息/User-Agent)的版本号是渲染层从 `packages/bruno-app/package.json` 读的
+    (`App/index.js` 经 AppContext 下发)。只 bump electron 时,exe 叫 2.1.2、界面
+    仍显示旧版本。两个 package.json 必须同批次 bump。

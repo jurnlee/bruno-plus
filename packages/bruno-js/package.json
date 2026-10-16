@@ -1,6 +1,6 @@
 {
   "name": "@usebruno/js",
-  "version": "0.13.0",
+  "version": "0.13.1",
   "license": "MIT",
   "main": "src/index.js",
   "files": [
@@ -13,7 +13,7 @@
     "sandbox:bundle-libraries": "node ./src/sandbox/bundle-libraries.js"
   },
   "dependencies": {
-    "@usebruno/common": "0.1.0",
+    "@usebruno/common": "0.1.1",
     "@usebruno/query": "0.1.0",
     "@usebruno/requests": "0.1.0",
     "ajv": "^8.18.0",

@@ -475,7 +475,7 @@ test.describe('Create Workspace', () => {
 
         await openCreateWorkspaceModal(page);
         await createWorkspaceModal.nameInput().fill('Occupied WS');
-        await expect(createWorkspaceModal.folderNamePreview()).toHaveText('Occupied WS');
+        await expect(createWorkspaceModal.folderNameInput()).toHaveValue('Occupied WS');
         await createWorkspaceModal.submitButton().click();
       });
 
@@ -513,7 +513,7 @@ test.describe('Create Workspace', () => {
 
         await openCreateWorkspaceModal(page);
         await createWorkspaceModal.nameInput().fill('Blocked WS');
-        await expect(createWorkspaceModal.folderNamePreview()).toHaveText('Blocked WS');
+        await expect(createWorkspaceModal.folderNameInput()).toHaveValue('Blocked WS');
         await createWorkspaceModal.submitButton().click();
       });
 

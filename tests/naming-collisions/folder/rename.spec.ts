@@ -9,8 +9,7 @@ import {
   closeAllCollections,
   openRenameModal,
   renameItemTo,
-  renameViaFilename,
-  revealFilesystemName
+  renameViaFilename
 } from '../../utils/page';
 import { findCollectionDir } from '../utils';
 
@@ -141,10 +140,9 @@ test.describe('Naming collisions - rename folder', () => {
 
     const renameModal = modal.byTitle('Rename Folder');
 
-    await test.step('Open rename, set the name to reserved "CON", reveal filesystem name, submit', async () => {
+    await test.step('Open rename, set the name to reserved "CON", submit', async () => {
       await openRenameModal(page, 'Auth', 'folder');
       await sidebar.renameItemModal.nameInput().fill('CON');
-      await revealFilesystemName(page);
       await sidebar.renameItemModal.submit().click();
     });
 

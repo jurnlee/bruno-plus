@@ -27,13 +27,6 @@ test.describe('Rename Collection Item - File Extension', () => {
       const renameModal = page.locator('.bruno-modal').filter({ hasText: 'Rename Request' });
       await renameModal.waitFor({ state: 'visible' });
 
-      // Show filesystem name via Options dropdown
-      await renameModal.locator('.btn-advanced').click();
-      await page.locator('.dropdown-item').filter({ hasText: 'Show Filesystem Name' }).click();
-
-      // Click the IconEdit SVG to enable filename editing
-      await renameModal.getByTestId('rename-request-edit-icon').click();
-
       // Verify the extension shows .yml, not .bru
       const extensionLabel = renameModal.locator('.file-extension');
       await expect(extensionLabel).toHaveText('.yml');
